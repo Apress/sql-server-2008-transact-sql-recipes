@@ -1,0 +1,567 @@
+-----------------------------------------------------------------------
+-- Source Code: SQL Server 2008 Transact-SQL Recipes, Joseph Sack
+-----------------------------------------------------------------------
+-- Do not execute the following code in a single batch.  These samples
+-- are provided in order to follow along with specific recipes.  
+-----------------------------------------------------------------------
+
+-- Reporting SQL Server Assignable Permissions
+
+SELECT class_desc, permission_name, covering_permission_name,
+parent_class_desc, parent_covering_permission_name
+FROM sys.fn_builtin_permissions(DEFAULT)
+ORDER BY class_desc, permission_name
+
+SELECT permission_name, covering_permission_name, parent_class_desc
+FROM sys.fn_builtin_permissions('schema')
+ORDER BY permission_name
+
+-- Managing Server Permissions
+
+USE master
+GO
+
+-- Create recipe login if it doesn't exist
+IF NOT EXISTS
+(SELECT name
+FROM sys.server_principals
+WHERE name = 'Veronica')
+BEGIN
+CREATE LOGIN [Veronica]
+WITH PASSWORD=N'test!#1',
+DEFAULT_DATABASE=[master],
+CHECK_EXPIRATION=OFF,
+CHECK_POLICY=OFF
+END
+
+GRANT ALTER TRACE TO Veronica
+WITH GRANT OPTION
+
+USE master
+GO
+GRANT CREATE ANY DATABASE, VIEW ANY DATABASE TO [JOEPROD\TestUser]
+
+DENY SHUTDOWN TO [JOEPROD\TestUser]
+
+USE master
+GO
+REVOKE ALTER TRACE FROM Veronica CASCADE
+
+-- Querying Server-Level Permissions
+
+USE master
+GO
+CREATE LOGIN TestUser2
+WITH PASSWORD = 'abcde1111111!'
+
+DENY SHUTDOWN TO TestUser2
+GRANT CREATE ANY DATABASE TO TestUser2
+
+SELECT p.class_desc,
+p.permission_name,
+p.state_desc
+FROM sys.server_permissions p
+INNER JOIN sys.server_principals s ON
+p.grantee_principal_id = s.principal_id
+WHERE s.name = 'TestUser2'
+
+-- Managing Database Permissions
+
+-- Create recipe login if it doesn't exist
+IF NOT EXISTS (SELECT name FROM sys.server_principals WHERE name = 'Danny')
+BEGIN
+CREATE LOGIN [Danny] WITH PASSWORD=N'test!#23',
+DEFAULT_DATABASE=[master], CHECK_EXPIRATION=OFF, CHECK_POLICY=OFF
+END
+
+-- Create DB for recipe if it doesn't exist
+IF NOT EXISTS (SELECT name FROM sys.databases WHERE name = 'TestDB')
+BEGIN
+CREATE DATABASE TestDB
+END
+GO
+
+USE TestDB
+GO
+
+-- Create db users if they don't already exist
+IF NOT EXISTS (SELECT name FROM sys.database_principals WHERE name = 'Veronica')
+BEGIN
+CREATE USER Veronica FROM LOGIN Veronica
+END
+
+IF NOT EXISTS (SELECT name FROM sys.database_principals WHERE name = 'Danny')
+BEGIN
+CREATE USER Danny FROM LOGIN Danny
+END
+
+USE TestDB
+GO
+GRANT ALTER ANY ASSEMBLY, ALTER ANY CERTIFICATE
+TO VERONICA
+
+DENY ALTER ANY DATABASE DDL TRIGGER TO Danny
+
+REVOKE CONNECT FROM Danny
+
+-- Querying Database Permissions
+
+USE master
+GO
+CREATE LOGIN TestUser WITH PASSWORD = 'abcde1111111!'
+
+USE AdventureWorks
+GO
+CREATE USER TestUser FROM LOGIN TestUser
+
+GRANT SELECT ON HumanResources.Department TO TestUser
+DENY SELECT ON Production.ProductPhoto TO TestUser
+GRANT EXEC ON HumanResources.uspUpdateEmployeeHireInfo TO TestUser
+GRANT CREATE ASSEMBLY TO TestUser
+GRANT SELECT ON Schema::Person TO TestUser
+DENY IMPERSONATE ON USER::dbo TO TestUser
+DENY SELECT ON HumanResources.Employee(Birthdate) TO TestUser
+
+SELECT principal_id
+FROM sys.database_principals
+WHERE name = 'TestUser'
+
+SELECT
+p.class_desc,
+p.permission_name,
+p.state_desc,
+ISNULL(o.type_desc,'') type_desc,
+CASE p.class_desc
+WHEN 'SCHEMA'
+THEN schema_name(major_id)
+WHEN 'OBJECT_OR_COLUMN'
+THEN CASE
+WHEN minor_id = 0
+THEN object_name(major_id)
+ELSE (SELECT
+object_name(object_id) +
+'.'+
+name
+FROM sys.columns
+WHERE object_id = p.major_id AND
+column_id = p.minor_id) END
+ELSE '' END AS object_name
+FROM sys.database_permissions p
+LEFT OUTER JOIN sys.objects o ON
+o.object_id = p.major_id
+WHERE grantee_principal_id = 5
+
+-- Managing Schemas
+
+USE TestDB
+GO
+CREATE SCHEMA Publishers AUTHORIZATION db_owner
+
+CREATE TABLE Publishers.ISBN
+(ISBN char(13) NOT NULL PRIMARY KEY,
+CreateDT datetime NOT NULL DEFAULT GETDATE())
+GO
+
+USE master
+GO
+CREATE LOGIN Nancy
+WITH PASSWORD=N'test123',
+DEFAULT_DATABASE=TestDB,
+CHECK_EXPIRATION=OFF,
+CHECK_POLICY=OFF
+GO
+
+USE TestDB
+GO
+CREATE USER Nancy FOR LOGIN Nancy
+GO
+
+USE TestDB
+GO
+ALTER USER Nancy WITH DEFAULT_SCHEMA=Publishers
+GO
+
+ALTER SCHEMA dbo TRANSFER Publishers.ISBN
+GO
+
+DROP SCHEMA Publishers
+
+-- Managing Schema Permissions
+
+USE AdventureWorks
+GO
+SELECT s.name SchemaName, d.name SchemaOwnerName
+FROM sys.schemas s
+INNER JOIN sys.database_principals d ON
+s.principal_id= d.principal_id
+ORDER BY s.name
+
+GRANT TAKE OWNERSHIP
+ON SCHEMA ::Person
+TO TestUser
+
+GRANT ALTER, EXECUTE, SELECT
+ON SCHEMA ::Production
+TO TestUser
+WITH GRANT OPTION
+
+DENY INSERT, UPDATE, DELETE
+ON SCHEMA ::Production
+TO TestUser
+
+REVOKE ALTER, SELECT
+ON SCHEMA ::Production
+TO TestUser
+CASCADE
+
+-- Managing Object Permissions
+
+USE AdventureWorks
+GO
+GRANT DELETE, INSERT, SELECT, UPDATE
+ON HumanResources.Department
+TO TestUser
+
+CREATE ROLE ReportViewers
+
+GRANT EXECUTE, VIEW DEFINITION
+ON dbo.uspGetManagerEmployees
+TO ReportViewers
+
+DENY ALTER ON HumanResources.Department TO TestUser
+
+REVOKE INSERT, UPDATE, DELETE
+ON HumanResources.Department
+TO TestUser
+
+-- Determining a Current Connection’s Permissions to a Securable
+
+USE AdventureWorks
+GO
+SELECT Has_perms_by_name ('AdventureWorks', 'DATABASE', 'ALTER')
+
+SELECT CASE Has_perms_by_name ('Person.Address', 'OBJECT', 'UPDATE')
+WHEN 1 THEN 'Yes'
+ELSE 'No'
+END UpdateTable,
+CASE Has_perms_by_name ('Person.Address', 'OBJECT', 'SELECT')
+WHEN 1 THEN 'Yes'
+ELSE 'No'
+END SelectFromTable
+
+-- Reporting the Permissions for a Principal by Securable Scope
+
+SELECT permission_name
+FROM fn_my_permissions(NULL, N'SERVER')
+ORDER BY permission_name
+
+USE master
+GO
+EXECUTE AS LOGIN = N'Veronica'
+GO
+
+SELECT permission_name
+FROM fn_my_permissions(NULL, N'SERVER')
+ORDER BY permission_name
+GO
+
+REVERT
+GO
+
+USE TestDB
+GO
+EXECUTE AS USER = N'Veronica'
+GO
+
+SELECT permission_name
+FROM fn_my_permissions(N'TestDB', N'DATABASE')
+ORDER BY permission_name
+GO
+
+REVERT
+GO
+
+USE AdventureWorks
+GO
+
+SELECT subentity_name, permission_name
+FROM fn_my_permissions(N'Production.Culture', N'OBJECT')
+ORDER BY permission_name, subentity_name
+
+-- Changing Securable Ownership
+
+USE AdventureWorks
+GO
+ALTER AUTHORIZATION ON Schema::HumanResources
+TO TestUser
+
+SELECT p.name OwnerName
+FROM sys.endpoints e
+INNER JOIN sys.server_principals p ON
+e.principal_id = p.principal_id
+WHERE e.name = 'ProductWebsite'
+
+ALTER AUTHORIZATION ON Endpoint::ProductWebSite TO TestUser
+
+-- Allowing SQL Logins to Access Non-SQL Server Resources
+
+USE master
+GO
+CREATE CREDENTIAL AccountingGroup
+WITH IDENTITY = N'JOEPROD\AccountUser1',
+SECRET = N'mypassword!'
+
+USE master
+GO
+ALTER LOGIN Veronica
+WITH CREDENTIAL = AccountingGroup
+GO
+
+-- Defining Audit Data Sources
+
+USE master
+GO
+
+CREATE SERVER AUDIT Caesar_Augustus_Server_Audit
+TO FILE
+( FILEPATH = 'C:\Apress\',
+MAXSIZE = 500 MB,
+MAX_ROLLOVER_FILES = 10,
+RESERVE_DISK_SPACE = OFF)
+WITH ( QUEUE_DELAY = 1000,
+ON_FAILURE = CONTINUE)
+
+SELECT audit_id,
+type_desc,
+on_failure_desc,
+queue_delay,
+is_state_enabled
+FROM sys.server_audits
+
+SELECT name,
+log_file_path,
+log_file_name,
+max_rollover_files,
+max_file_size
+FROM sys.server_file_audits
+
+-- Capturing SQL Instance–Scoped Events
+
+SELECT name
+FROM sys.dm_audit_actions
+WHERE class_desc = 'SERVER' AND
+configuration_level = 'Group'
+ORDER BY name
+
+CREATE SERVER AUDIT SPECIFICATION Caesar_Augustus_Server_Audit_Spec
+FOR SERVER AUDIT Caesar_Augustus_Server_Audit
+ADD (SERVER_ROLE_MEMBER_CHANGE_GROUP),
+ADD (DBCC_GROUP),
+ADD (BACKUP_RESTORE_GROUP)
+WITH (STATE = ON)
+
+SELECT server_specification_id,
+name,
+is_state_enabled
+FROM sys.server_audit_specifications
+
+SELECT server_specification_id,
+audit_action_name
+FROM sys.server_audit_specification_details
+WHERE server_specification_id = 65538
+
+-- Capturing Database-Scoped Events
+
+SELECT name
+FROM sys.dm_audit_actions
+WHERE configuration_level = 'Action' AND
+class_desc = 'OBJECT'
+ORDER BY name
+
+SELECT name
+FROM sys.dm_audit_actions
+WHERE configuration_level = 'Group' AND
+class_desc = 'DATABASE'
+ORDER BY name
+
+USE AdventureWorks
+GO
+
+CREATE DATABASE AUDIT SPECIFICATION AdventureWorks_DB_Spec
+FOR SERVER AUDIT Caesar_Augustus_Server_Audit
+ADD (DATABASE_PRINCIPAL_IMPERSONATION_GROUP),
+ADD (INSERT, UPDATE, DELETE
+ON HumanResources.Department
+BY public)
+WITH (STATE = ON)
+GO
+
+SELECT database_specification_id,name,is_state_enabled
+FROM sys.database_audit_specifications
+
+SELECT audit_action_name,
+class_desc,
+is_group,
+CASE
+WHEN major_id > 0 THEN OBJECT_NAME(major_id, DB_ID())
+ELSE 'N/A'
+END ObjectNM
+FROM sys.database_audit_specification_details
+WHERE database_specification_id = 65538
+
+-- Querying Captured Audit Data
+
+USE master
+GO
+ALTER SERVER AUDIT [Caesar_Augustus_Server_Audit] WITH (STATE = ON)
+
+USE master
+GO
+
+-- Create new login (not auditing this, but using it for recipe)
+CREATE LOGIN TestAudit WITH PASSWORD = 'C83D7F50-9B9E'
+
+-- Add to server role bulkadmin
+EXEC sp_addsrvrolemember 'TestAudit', 'bulkadmin'
+GO
+
+-- Back up AdventureWorks database
+BACKUP DATABASE AdventureWorks
+TO DISK = 'C:\Apress\Example_AW.BAK'
+GO
+
+-- Perform a DBCC on AdventureWorks
+DBCC CHECKDB('AdventureWorks')
+GO
+
+-- Perform some AdventureWorks actions
+USE AdventureWorks
+GO
+
+-- Create a new user and then execute under that
+-- user's context
+CREATE USER TestAudit FROM LOGIN TestAudit
+
+EXECUTE AS USER = 'TestAudit'
+
+-- Revert back to me (in this case a login with sysadmin perms)
+REVERT
+
+-- Perform an INSERT, UPDATE, and DELETE
+-- from HumanResources.Department
+INSERT HumanResources.Department
+(Name, GroupName)
+VALUES('Traffic', 'Advertising')
+
+UPDATE HumanResources.Department
+SET Name = 'Media Planning'
+WHERE Name = 'Traffic'
+
+DELETE HumanResources.Department
+WHERE Name = 'Media Planning'
+
+SELECT af.event_time,
+af.succeeded,
+af.target_server_principal_name,
+object_name
+FROM fn_get_audit_file
+('C:\Apress\Caesar_Augustus_Server_Audit_*',
+default, default) af
+INNER JOIN sys.dm_audit_actions aa ON
+af.action_id = aa.action_id
+WHERE aa.name = 'ADD MEMBER' AND
+aa.class_desc = 'SERVER ROLE'
+
+SELECT af.event_time,
+af.database_principal_name
+FROM fn_get_audit_file
+('C:\Apress\Caesar_Augustus_Server_Audit_*',
+default, default) af
+INNER JOIN sys.dm_audit_actions aa ON
+af.action_id = aa.action_id
+WHERE aa.name = 'DELETE' AND
+aa.class_desc = 'OBJECT' AND
+af.schema_name = 'HumanResources' AND
+af.object_name = 'Department'
+
+SELECT event_time, statement
+FROM fn_get_audit_file
+('C:\Apress\Caesar_Augustus_Server_Audit_*',
+default, default) af
+INNER JOIN sys.dm_audit_actions aa ON
+af.action_id = aa.action_id
+WHERE aa.name = 'BACKUP' AND
+aa.class_desc = 'DATABASE'
+
+SELECT DISTINCT
+aa.name,
+database_principal_name,
+target_server_principal_name,
+object_name
+FROM fn_get_audit_file
+('C:\Apress\Caesar_Augustus_Server_Audit_*',
+default, default) af
+INNER JOIN sys.dm_audit_actions aa ON
+af.action_id = aa.action_id
+
+-- Managing, Modifying, and Removing Audit Objects
+
+USE master
+GO
+ALTER SERVER AUDIT SPECIFICATION [Caesar_Augustus_Server_Audit_Spec]
+WITH (STATE = OFF)
+
+ALTER SERVER AUDIT SPECIFICATION [Caesar_Augustus_Server_Audit_Spec]
+DROP (BACKUP_RESTORE_GROUP)
+
+ALTER SERVER AUDIT SPECIFICATION [Caesar_Augustus_Server_Audit_Spec]
+ADD (LOGIN_CHANGE_PASSWORD_GROUP)
+
+ALTER SERVER AUDIT SPECIFICATION [Caesar_Augustus_Server_Audit_Spec]
+WITH (STATE = ON)
+
+USE AdventureWorks
+GO
+ALTER DATABASE AUDIT SPECIFICATION [AdventureWorks_DB_Spec]
+WITH (STATE = OFF)
+
+ALTER DATABASE AUDIT SPECIFICATION [AdventureWorks_DB_Spec]
+DROP (INSERT ON [HumanResources].[Department] BY public)
+
+ALTER DATABASE AUDIT SPECIFICATION [AdventureWorks_DB_Spec]
+ADD (DATABASE_ROLE_MEMBER_CHANGE_GROUP)
+
+ALTER DATABASE AUDIT SPECIFICATION [AdventureWorks_DB_Spec]
+WITH (STATE = ON)
+
+USE master
+GO
+
+ALTER SERVER AUDIT [Caesar_Augustus_Server_Audit]
+WITH (STATE = OFF)
+
+ALTER SERVER AUDIT [Caesar_Augustus_Server_Audit]
+TO APPLICATION_LOG
+
+ALTER SERVER AUDIT [Caesar_Augustus_Server_Audit]
+WITH (STATE = ON)
+
+USE AdventureWorks
+GO
+ALTER DATABASE AUDIT SPECIFICATION [AdventureWorks_DB_Spec]
+WITH (STATE = OFF)
+
+DROP DATABASE AUDIT SPECIFICATION [AdventureWorks_DB_Spec]
+
+USE master
+GO
+
+ALTER SERVER AUDIT SPECIFICATION [Caesar_Augustus_Server_Audit_Spec]
+WITH (STATE = OFF)
+
+DROP SERVER AUDIT SPECIFICATION [Caesar_Augustus_Server_Audit_Spec]
+
+ALTER SERVER AUDIT [Caesar_Augustus_Server_Audit] WITH (STATE = OFF)
+
+DROP SERVER AUDIT [Caesar_Augustus_Server_Audit]
+

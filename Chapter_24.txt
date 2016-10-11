@@ -1,0 +1,139 @@
+-----------------------------------------------------------------------
+-- Source Code: SQL Server 2008 Transact-SQL Recipes, Joseph Sack
+-----------------------------------------------------------------------
+-- Do not execute the following code in a single batch.  These samples
+-- are provided in order to follow along with specific recipes.  
+-----------------------------------------------------------------------
+
+-- Changing the Name of a User-Created Database Object
+
+USE AdventureWorks
+GO
+-- Add example objects
+CREATE TABLE HumanResources.InsuranceProvider
+(InsuranceProviderID int NOT NULL,
+InsuranceProviderNM varchar(50) NOT NULL
+)
+GO
+
+CREATE INDEX ni_InsuranceProvider_InsuranceProviderID
+ON HumanResources.InsuranceProvider (InsuranceProviderID)
+
+-- Rename the table
+EXEC sys.sp_rename 'HumanResources.InsuranceProvider',
+'Provider',
+'Object'
+
+-- Rename a column
+EXEC sys.sp_rename 'HumanResources.Provider.InsuranceProviderID',
+'ProviderID',
+'Column'
+
+-- Rename the primary key constraint
+EXEC sys.sp_rename 'HumanResources.Provider.ni_InsuranceProvider_InsuranceProviderID',
+'ni_Provider_ProviderID',
+'Index'
+
+-- Changing an Object’s Schema
+
+Use AdventureWorks
+GO
+CREATE TABLE Sales.TerminationReason
+(TerminationReasonID int NOT NULL PRIMARY KEY,
+TerminationReasonDESC varchar(100) NOT NULL)
+GO
+ALTER SCHEMA HumanResources TRANSFER Sales.TerminationReason
+GO
+
+-- Identifying Object Dependencies
+
+USE master
+GO
+-- Create two new databases
+CREATE DATABASE TSQLRecipe_A
+GO
+CREATE DATABASE TSQLRecipe_B
+GO
+
+-- Create a new table in the first database
+USE TSQLRecipe_A
+GO
+CREATE TABLE dbo.Book
+(BookID int NOT NULL PRIMARY KEY,
+BookNM varchar(50) NOT NULL)
+GO
+
+-- Create a procedure referencing an object
+-- in the second database
+USE TSQLRecipe_B
+GO
+CREATE PROCEDURE dbo.usp_SEL_Book
+AS
+SELECT BookID, BookNM
+FROM TSQLRecipe_A.dbo.Book
+GO
+
+SELECT referenced_server_name, referenced_database_name,
+referenced_schema_name, referenced_entity_name, is_caller_dependent
+FROM sys.sql_expression_dependencies
+WHERE OBJECT_NAME(referencing_id) = 'usp_SEL_Book'
+
+-- Create a procedure referencing an object
+-- in the second database
+USE TSQLRecipe_B
+GO
+
+CREATE PROCEDURE dbo.usp_SEL_Contract
+AS
+SELECT ContractID, ContractNM
+FROM TSQLRecipe_A.dbo.Contract
+GO
+
+USE TSQLRecipe_B
+GO
+SELECT referenced_server_name, referenced_database_name,
+referenced_schema_name, referenced_entity_name, is_caller_dependent
+FROM sys.sql_expression_dependencies
+WHERE OBJECT_NAME(referencing_id) = 'usp_SEL_Contract'
+
+-- Identifying Referencing and Referenced Entities
+
+USE TSQLRecipe_A
+GO
+CREATE TABLE dbo.BookPublisher
+(BookPublisherID int NOT NULL PRIMARY KEY,
+BookPublisherNM varchar(30) NOT NULL)
+GO
+
+CREATE VIEW dbo.vw_BookPublisher
+AS
+SELECT BookPublisherID, BookPublisherNM
+FROM dbo.BookPublisher
+GO
+CREATE PROCEDURE dbo.usp_INS_BookPublisher
+@BookPublisherNM varchar(30)
+AS
+INSERT dbo.BookPublisher
+(BookPublisherNM)
+VALUES (@BookPublisherNM)
+GO
+
+SELECT referenced_entity_name, referenced_minor_name
+FROM sys.dm_sql_referenced_entities ('dbo.vw_BookPublisher', 'OBJECT')
+
+SELECT referencing_schema_name, referencing_entity_name
+FROM sys.dm_sql_referencing_entities ('dbo.BookPublisher', 'OBJECT')
+
+-- Viewing an Object’s Definition
+
+SELECT OBJECT_DEFINITION
+(OBJECT_ID('dbo.ufnGetAccountingEndDate'))
+GO
+
+USE AdventureWorks
+GO
+SELECT OBJECT_DEFINITION(OBJECT_ID('sys.sp_depends'))
+GO
+
+
+

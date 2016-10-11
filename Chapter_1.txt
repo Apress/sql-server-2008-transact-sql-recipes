@@ -1,0 +1,749 @@
+-----------------------------------------------------------------------
+-- Source Code: SQL Server 2008 Transact-SQL Recipes, Joseph Sack
+-----------------------------------------------------------------------
+-- Do not execute the following code in a single batch.  These samples
+-- are provided in order to follow along with specific recipes.  
+-----------------------------------------------------------------------
+
+-- Selecting Specific Columns from a Table
+
+USE AdventureWorks
+GO
+
+SELECT 	NationalIDNumber,
+	LoginID,
+	JobTitle
+FROM HumanResources.Employee
+
+-- Selecting Every Column for Every Row
+
+USE AdventureWorks
+GO
+SELECT *
+FROM HumanResources.Employee
+
+-- Using the WHERE Clause to Specify Rows Returned in the Result Set
+
+
+SELECT Title,
+FirstName,
+LastName
+FROM Person.Person
+WHERE Title = 'Ms.'
+
+-- Combining Search Conditions
+
+SELECT Title,
+FirstName,
+LastName
+FROM Person.Person
+WHERE Title = 'Ms.' AND
+LastName = 'Antrim'
+
+SELECT Title,
+FirstName,
+LastName
+FROM Person.Person
+WHERE Title = 'Ms.' OR
+LastName = 'Antrim'
+
+
+-- Negating a Search Condition
+
+SELECT Title,
+FirstName,
+LastName
+FROM Person.Person
+WHERE NOT Title = 'Ms.'
+
+-- Keeping Your WHERE Clause Unambiguous
+
+SELECT Title,
+FirstName,
+LastName
+FROM Person.Person
+WHERE Title = 'Ms.' AND
+FirstName = 'Catherine' OR
+LastName = 'Adams'
+
+SELECT Title,
+FirstName,
+MiddleName,
+LastName
+FROM Person.Person
+WHERE (Title = 'Ms.' AND
+FirstName = 'Catherine') OR
+LastName = 'Adams'
+
+
+-- Using BETWEEN for Date Range Searches
+
+SELECT SalesOrderID,
+ShipDate
+FROM Sales.SalesOrderHeader
+WHERE ShipDate BETWEEN '7/28/2002 00:00:00' AND '7/29/2002 23:59:59'
+
+-- Using Comparisons
+
+SELECT ProductID,
+Name,
+StandardCost
+FROM Production.Product
+WHERE StandardCost < 110.0000
+CHAPTER 1 n SELECT 9
+
+-- Checking for NULL Values
+
+SELECT ProductID,
+Name,
+Weight
+FROM Production.Product
+WHERE Weight IS NULL
+
+-- Returning Rows Based on a List of Values
+
+SELECT ProductID,
+Name,
+Color
+FROM Production.Product
+WHERE Color IN ('Silver', 'Black', 'Red')
+
+-- Using Wildcards with LIKE
+
+SELECT ProductID,
+Name
+FROM Production.Product
+WHERE Name LIKE 'B%'
+
+UPDATE Production.ProductDescription
+SET Description = 'Chromoly steel. High % of defects'
+WHERE ProductDescriptionID = 3
+
+SELECT ProductDescriptionID,Description
+FROM Production.ProductDescription
+WHERE Description LIKE '%/%%' ESCAPE '/'
+
+-- Declaring and Assigning Values to Variables
+
+DECLARE @AddressLine1 nvarchar(60)
+SET @AddressLine1 = 'Heiderplatz'
+SELECT AddressID, AddressLine1
+FROM Person.Address
+WHERE AddressLine1 LIKE '%' + @AddressLine1 + '%'
+
+DECLARE @AddressLine1 nvarchar(60) = 'Heiderplatz'
+SELECT AddressID, AddressLine1
+FROM Person.Address
+WHERE AddressLine1 LIKE '%' + @AddressLine1 + '%'
+
+-- Using the GROUP BY Clause
+
+SELECT OrderDate,
+SUM(TotalDue) TotalDueByOrderDate
+FROM Sales.SalesOrderHeader
+WHERE OrderDate BETWEEN '7/1/2001' AND '7/31/2001'
+GROUP BY OrderDate
+
+-- Using GROUP BY ALL
+
+SELECT OrderDate,
+SUM(TotalDue) TotalDueByOrderDate
+FROM Sales.SalesOrderHeader
+WHERE OrderDate BETWEEN '7/1/2001' AND '7/31/2001'
+GROUP BY ALL OrderDate
+
+-- Selectively Querying Grouped Data Using HAVING
+
+SELECT s.Name,
+COUNT(w.WorkOrderID) Cnt
+FROM Production.ScrapReason s
+INNER JOIN Production.WorkOrder w ON
+s.ScrapReasonID = w.ScrapReasonID
+GROUP BY s.Name
+HAVING COUNT(*)>50
+
+-- Using the ORDER BY Clause
+
+SELECT p.Name,
+h.EndDate,
+h.ListPrice
+FROM Production.Product p
+INNER JOIN Production.ProductListPriceHistory h ON
+p.ProductID = h.ProductID
+ORDER BY p.Name, h.EndDate
+
+SELECT p.Name,
+h.EndDate,
+h.ListPrice
+FROM Production.Product p
+INNER JOIN Production.ProductListPriceHistory h ON
+p.ProductID = h.ProductID
+ORDER BY p.Name DESC, h.EndDate DESC
+
+SELECT p.Name
+FROM Production.Product p
+ORDER BY p.Color
+
+-- Using the TOP Keyword with Ordered Results
+
+SELECT TOP 10 v.Name,
+v.CreditRating
+FROM Purchasing.Vendor v
+ORDER BY v.CreditRating DESC, v.Name
+
+DECLARE @Percentage float
+SET @Percentage = 1
+SELECT TOP (@Percentage) PERCENT
+Name
+FROM Production.Product
+ORDER BY Name
+
+-- Using DISTINCT to Remove Duplicate Values
+
+SELECT DISTINCT HireDate
+FROM HumanResources.Employee
+
+-- Using DISTINCT in Aggregate Functions
+
+SELECT AVG(ListPrice)
+FROM Production.Product
+
+SELECT AVG(DISTINCT ListPrice)
+FROM Production.Product
+
+-- Using Column Aliases
+
+SELECT Color AS 'Grouped Color',
+AVG(DISTINCT ListPrice) AS 'Average Distinct List Price',
+AVG(ListPrice) 'Average List Price'
+FROM Production.Product
+GROUP BY Color
+
+-- Using SELECT to Create a Script
+
+SELECT column_name + ' IS NULL AND '
+FROM INFORMATION_SCHEMA.columns
+WHERE table_name = 'Employee'
+ORDER BY ORDINAL_POSITION
+
+-- Performing String Concatenation
+
+SELECT 'The ' +
+p.name +
+' is only ' +
+CONVERT(varchar(25),p.ListPrice) +
+'!'
+FROM Production.Product p
+WHERE p.ListPrice between 100 AND 120
+ORDER BY p.ListPrice
+
+-- Creating a Comma-Delimited List Using SELECT
+
+DECLARE @Shifts varchar(20) = ''
+SELECT @Shifts = @Shifts + s.Name + ','
+FROM HumanResources.Shift s
+ORDER BY s.EndTime
+SELECT @Shifts
+
+-- Using the INTO Clause
+
+SELECT BusinessEntityID,
+Name,
+SalesPersonID,
+Demographics
+INTO Store_Archive
+FROM Sales.Store
+
+SELECT BusinessEntityID,
+Name,
+SalesPersonID,
+Demographics
+INTO Store_Archive_2
+FROM Sales.Store
+WHERE 1=0
+
+-- Using Subqueries to Check for Matches
+
+SELECT DISTINCT s.PurchaseOrderNumber
+FROM Sales.SalesOrderHeader s
+WHERE EXISTS ( SELECT SalesOrderID
+FROM Sales.SalesOrderDetail
+WHERE UnitPrice BETWEEN 1000 AND 2000 AND
+SalesOrderID = s.SalesOrderID)
+
+SELECT BusinessEntityID,
+SalesQuota CurrentSalesQuota
+FROM Sales.SalesPerson
+WHERE SalesQuota =
+(SELECT MAX(SalesQuota)
+FROM Sales.SalesPerson)
+
+-- Using INNER Joins
+
+SELECT p.Name,
+s.DiscountPct
+FROM Sales.SpecialOffer s
+INNER JOIN Sales.SpecialOfferProduct o ON
+s.SpecialOfferID = o.SpecialOfferID
+INNER JOIN Production.Product p ON
+o.ProductID = p.ProductID
+WHERE p.Name = 'All-Purpose Bike Stand'
+
+-- Using OUTER Joins
+
+SELECT s.CountryRegionCode,
+s.StateProvinceCode,
+t.TaxType,
+t.TaxRate
+FROM Person.StateProvince s
+INNER JOIN Sales.SalesTaxRate t ON
+s.StateProvinceID = t.StateProvinceID
+
+SELECT s.CountryRegionCode,
+s.StateProvinceCode,
+t.TaxType,
+t.TaxRate
+FROM Person.StateProvince s
+LEFT OUTER JOIN Sales.SalesTaxRate t ON
+s.StateProvinceID = t.StateProvinceID
+
+
+-- Using CROSS Joins
+
+SELECT s.CountryRegionCode,
+s.StateProvinceCode,
+t.TaxType,
+t.TaxRate
+FROM Person.StateProvince s
+CROSS JOIN Sales.SalesTaxRate t
+
+-- Referencing a Single Table Multiple Times in the Same Query
+
+SELECT s.BusinessEntityID,
+SUM(s2004.SalesQuota) Total_2004_SQ,
+SUM(s2003.SalesQuota) Total_2003_SQ
+FROM Sales.SalesPerson s
+LEFT OUTER JOIN Sales.SalesPersonQuotaHistory s2004 ON
+s.BusinessEntityID = s2004.BusinessEntityID AND
+YEAR(s2004.QuotaDate)= 2004
+LEFT OUTER JOIN Sales.SalesPersonQuotaHistory s2003 ON
+s.BusinessEntityID = s2003.BusinessEntityID AND
+YEAR(s2003.QuotaDate)= 2003
+GROUP BY s.BusinessEntityID
+
+-- Using Derived Tables
+
+SELECT DISTINCT s.PurchaseOrderNumber
+FROM Sales.SalesOrderHeader s
+INNER JOIN (SELECT SalesOrderID
+FROM Sales.SalesOrderDetail
+WHERE UnitPrice BETWEEN 1000 AND 2000) d ON
+s.SalesOrderID = d.SalesOrderID
+
+-- Combining Result Sets with UNION
+
+SELECT BusinessEntityID, GETDATE() QuotaDate, SalesQuota
+FROM Sales.SalesPerson
+WHERE SalesQuota > 0
+UNION
+SELECT BusinessEntityID, QuotaDate, SalesQuota
+FROM Sales.SalesPersonQuotaHistory
+WHERE SalesQuota > 0
+ORDER BY BusinessEntityID DESC, QuotaDate DESC
+
+-- Using APPLY to Invoke a Table-Valued Function for Each Row
+
+CREATE FUNCTION dbo.fn_WorkOrderRouting
+(@WorkOrderID int) RETURNS TABLE
+AS
+RETURN
+SELECT WorkOrderID,
+ProductID,
+OperationSequence,
+LocationID
+FROM Production.WorkOrderRouting
+WHERE WorkOrderID = @WorkOrderID
+GO
+
+SELECT w.WorkOrderID,
+w.OrderQty,
+r.ProductID,
+r.OperationSequence
+FROM Production.WorkOrder w
+CROSS APPLY dbo.fn_WorkOrderRouting
+(w.WorkOrderID) AS r
+ORDER BY w.WorkOrderID,
+w.OrderQty,
+r.ProductID
+
+-- Using OUTER APPLY
+
+INSERT INTO [AdventureWorks].[Production].[WorkOrder]
+([ProductID]
+,[OrderQty]
+,[ScrappedQty]
+,[StartDate]
+,[EndDate]
+,[DueDate]
+,[ScrapReasonID]
+,[ModifiedDate])
+VALUES
+(1,
+1,
+1,
+GETDATE(),
+GETDATE(),
+GETDATE(),
+1,
+GETDATE())
+
+SELECT w.WorkOrderID,
+w.OrderQty,
+r.ProductID,
+r.OperationSequence
+FROM Production.WorkOrder AS w
+CROSS APPLY dbo.fn_WorkOrderRouting
+(w.WorkOrderID) AS r
+WHERE w.WorkOrderID IN
+(SELECT MAX(WorkOrderID)
+FROM Production.WorkOrder)
+
+SELECT w.WorkOrderID,
+w.OrderQty,
+r.ProductID,
+r.OperationSequence
+FROM Production.WorkOrder AS w
+OUTER APPLY dbo.fn_WorkOrderRouting
+(w.WorkOrderID) AS r
+WHERE w.WorkOrderID IN
+(SELECT MAX(WorkOrderID)
+FROM Production.WorkOrder)
+
+-- Using the TABLESAMPLE to Return Random Rows
+
+SELECT FirstName,LastName
+FROM Person.Person
+TABLESAMPLE SYSTEM (2 PERCENT)
+
+-- Using PIVOT to Convert Single Column Values into Multiple Columns and Aggregate Data
+
+SELECT s.Name ShiftName,
+h.BusinessEntityID,
+d.Name DepartmentName
+FROM HumanResources.EmployeeDepartmentHistory h
+INNER JOIN HumanResources.Department d ON
+h.DepartmentID = d.DepartmentID
+INNER JOIN HumanResources.Shift s ON
+h.ShiftID = s.ShiftID
+WHERE EndDate IS NULL AND
+d.Name IN ('Production', 'Engineering', 'Marketing')
+ORDER BY ShiftName
+
+SELECT ShiftName,
+Production,
+Engineering,
+Marketing
+FROM
+(SELECT s.Name ShiftName,
+h.BusinessEntityID,
+d.Name DepartmentName
+FROM HumanResources.EmployeeDepartmentHistory h
+INNER JOIN HumanResources.Department d ON
+h.DepartmentID = d.DepartmentID
+INNER JOIN HumanResources.Shift s ON
+h.ShiftID = s.ShiftID
+WHERE EndDate IS NULL AND
+d.Name IN ('Production', 'Engineering', 'Marketing')) AS a
+PIVOT
+(
+COUNT(BusinessEntityID)
+FOR DepartmentName IN ([Production], [Engineering], [Marketing])
+) AS b
+ORDER BY ShiftName
+
+
+-- Normalizing Data with UNPIVOT
+
+CREATE TABLE dbo.Contact
+(EmployeeID int NOT NULL,
+PhoneNumber1 bigint,
+PhoneNumber2 bigint,
+PhoneNumber3 bigint)
+GO
+INSERT dbo.Contact
+(EmployeeID, PhoneNumber1, PhoneNumber2, PhoneNumber3)
+VALUES( 1, 2718353881, 3385531980, 5324571342)
+INSERT dbo.Contact
+(EmployeeID, PhoneNumber1, PhoneNumber2, PhoneNumber3)
+VALUES( 2, 6007163571, 6875099415, 7756620787)
+INSERT dbo.Contact
+(EmployeeID, PhoneNumber1, PhoneNumber2, PhoneNumber3)
+VALUES( 3, 9439250939, NULL, NULL)
+
+SELECT EmployeeID,
+PhoneType,
+PhoneValue
+FROM
+(SELECT EmployeeID, PhoneNumber1, PhoneNumber2, PhoneNumber3
+FROM dbo.Contact) c
+UNPIVOT
+(PhoneValue FOR PhoneType IN ([PhoneNumber1], [PhoneNumber2], [PhoneNumber3])
+) AS p
+
+-- Returning Distinct or Matching Rows Using EXCEPT and INTERSECT
+
+-- First two new tables based on ProductionProduct will be
+-- created, in order to demonstrate EXCEPT and INTERSECT.
+-- See Chapter 8 for more on ROW_NUMBER
+-- Create TableA
+SELECT prod.ProductID,
+prod.Name
+INTO dbo.TableA
+FROM
+(SELECT ProductID,
+Name,
+ROW_NUMBER() OVER (ORDER BY ProductID) RowNum
+FROM Production.Product) prod
+WHERE RowNum BETWEEN 1 and 20
+-- Create TableB
+SELECT prod.ProductID,
+prod.Name
+INTO dbo.TableB
+FROM
+(SELECT ProductID,
+Name,
+ROW_NUMBER() OVER (ORDER BY ProductID) RowNum
+FROM Production.Product) prod
+WHERE RowNum BETWEEN 10 and 29
+
+SELECT ProductID,
+Name
+FROM dbo.TableA
+EXCEPT
+SELECT ProductID,
+Name
+
+SELECT ProductID,
+Name
+FROM dbo.TableA
+INTERSECT
+SELECT ProductID,
+Name
+FROM dbo.TableB
+
+
+-- Summarizing Data Using CUBE
+
+SELECT i.Shelf,
+SUM(i.Quantity) Total
+FROM Production.ProductInventory i
+GROUP BY CUBE (i.Shelf)
+
+SELECT i.Shelf,
+i.LocationID,
+SUM(i.Quantity) Total
+FROM Production.ProductInventory i
+GROUP BY CUBE (i.Shelf,i.LocationID)
+
+-- Summarizing Data Using ROLLUP
+
+SELECT i.Shelf,
+p.Name,
+SUM(i.Quantity) Total
+FROM Production.ProductInventory i
+INNER JOIN Production.Product p ON
+i.ProductID = p.ProductID
+GROUP BY ROLLUP (i.Shelf, p.Name)
+
+-- Creating Custom Summaries Using Grouping Sets
+
+SELECT
+NULL,
+i.LocationID,
+p.Name,
+SUM(i.Quantity) Total
+FROM Production.ProductInventory i
+INNER JOIN Production.Product p ON
+i.ProductID = p.ProductID
+WHERE Shelf IN ('A','C') AND
+Name IN ('Chain', 'Decal', 'Head Tube')
+GROUP BY i.LocationID, p.Name
+UNION ALL
+SELECT
+i.Shelf,
+NULL,
+NULL,
+SUM(i.Quantity) Total
+FROM Production.ProductInventory i
+INNER JOIN Production.Product p ON
+i.ProductID = p.ProductID
+WHERE Shelf IN ('A','C') AND
+Name IN ('Chain', 'Decal', 'Head Tube')
+GROUP BY i.Shelf
+UNION ALL
+SELECT
+i.Shelf,
+NULL,
+p.Name,
+SUM(i.Quantity) Total
+FROM Production.ProductInventory i
+INNER JOIN Production.Product p ON
+i.ProductID = p.ProductID
+WHERE Shelf IN ('A','C') AND
+Name IN ('Chain', 'Decal', 'Head Tube')
+GROUP BY i.Shelf, p.Name
+
+SELECT
+i.Shelf,
+i.LocationID,
+p.Name,
+SUM(i.Quantity) Total
+FROM Production.ProductInventory i
+INNER JOIN Production.Product p ON
+i.ProductID = p.ProductID
+WHERE Shelf IN ('A','C') AND
+Name IN ('Chain', 'Decal', 'Head Tube')
+GROUP BY GROUPING SETS
+((i.Shelf), (i.Shelf, p.Name), (i.LocationID, p.Name))
+
+
+-- Revealing Rows Generated by GROUPING
+
+SELECT
+i.Shelf,
+i.LocationID,
+CASE
+WHEN GROUPING(i.Shelf) = 0 AND
+GROUPING(i.LocationID) = 1 THEN 'Shelf Total'
+WHEN GROUPING(i.Shelf) = 1 AND
+GROUPING(i.LocationID) = 0 THEN 'Location Total'
+WHEN GROUPING(i.Shelf) = 1 AND
+GROUPING(i.LocationID) = 1 THEN 'Grand Total'
+ELSE 'Regular Row'
+END RowType,
+SUM(i.Quantity) Total
+FROM Production.ProductInventory i
+WHERE LocationID = 2
+GROUP BY CUBE (i.Shelf,i.LocationID)
+
+-- Advanced Group-Level Identification with GROUPING_ID
+
+SELECT
+i.Shelf,
+i.LocationID,
+i.Bin,
+i.Quantity
+FROM Production.ProductInventory i
+WHERE i.LocationID IN (3) AND
+i.Bin IN (1,2)
+
+SELECT
+i.Shelf,
+i.LocationID,
+i.Bin,
+SUM(i.Quantity) Total
+FROM Production.ProductInventory i
+WHERE i.LocationID IN (3) AND
+i.Bin IN (1,2)
+GROUP BY CUBE (i.Shelf,i.LocationID, i.Bin)
+ORDER BY i.Shelf, i.LocationID, i.Bin
+
+SELECT
+i.Shelf,
+i.LocationID,
+i.Bin,
+CASE GROUPING_ID(i.Shelf,i.LocationID, i.Bin)
+WHEN 1 THEN 'Shelf/Location Total'
+WHEN 2 THEN 'Shelf/Bin Total'
+WHEN 3 THEN 'Shelf Total'
+WHEN 4 THEN 'Location/Bin Total'
+WHEN 5 THEN 'Location Total'
+WHEN 6 THEN 'Bin Total'
+WHEN 7 THEN 'Grand Total'
+ELSE 'Regular Row'
+END,
+SUM(i.Quantity) Total
+FROM Production.ProductInventory i
+WHERE i.LocationID IN (3) AND
+i.Bin IN (1,2)
+GROUP BY CUBE (i.Shelf,i.LocationID, i.Bin)
+ORDER BY i.Shelf, i.LocationID, i.Bin
+
+
+-- Using a Non-Recursive Common Table Expression
+
+WITH VendorSearch (RowNumber, VendorName, AccountNumber)
+AS
+(
+SELECT ROW_NUMBER() OVER (ORDER BY Name) RowNum,
+Name,
+AccountNumber
+FROM Purchasing.Vendor
+)
+SELECT RowNumber,
+VendorName,
+AccountNumber
+FROM VendorSearch
+WHERE RowNumber BETWEEN 1 AND 5
+UNION
+SELECT RowNumber,
+VendorName,
+AccountNumber
+FROM VendorSearch
+WHERE RowNumber BETWEEN 100 AND 104
+
+WITH VendorSearch (VendorID, VendorName)
+AS
+(
+SELECT BusinessEntityID,
+Name
+FROM Purchasing.Vendor
+)
+SELECT v.VendorID,
+v.VendorName,
+p.ProductID,
+p.StandardPrice
+FROM VendorSearch v
+INNER JOIN Purchasing.ProductVendor p ON
+v.VendorID = p.VendorID
+ORDER BY v.VendorName
+
+-- Using a Recursive Common Table Expression
+
+CREATE TABLE dbo.Company
+(CompanyID int NOT NULL PRIMARY KEY,
+ParentCompanyID int NULL,
+CompanyName varchar(25) NOT NULL)
+
+INSERT dbo.Company (CompanyID, ParentCompanyID, CompanyName)
+VALUES
+(1, NULL, 'Mega-Corp'),
+(2, 1, 'Mediamus-Corp'),
+(3, 1, 'KindaBigus-Corp'),
+(4, 3, 'GettinSmaller-Corp'),
+(5, 4, 'Smallest-Corp'),
+(6, 5, 'Puny-Corp'),
+(7, 5, 'Small2-Corp')
+
+WITH CompanyTree(ParentCompanyID, CompanyID, CompanyName, CompanyLevel)
+AS
+(
+SELECT ParentCompanyID,
+CompanyID,
+CompanyName,
+0 AS CompanyLevel
+FROM dbo.Company
+WHERE ParentCompanyID IS NULL
+UNION ALL
+SELECT c.ParentCompanyID,
+c.CompanyID,
+c.CompanyName,
+p.CompanyLevel + 1
+FROM dbo.Company c
+INNER JOIN CompanyTree p
+ON c.ParentCompanyID = p.CompanyID
+)
+SELECT ParentCompanyID, CompanyID, CompanyName, CompanyLevel
+FROM CompanyTree
+
+

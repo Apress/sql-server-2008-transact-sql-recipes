@@ -1,0 +1,284 @@
+-----------------------------------------------------------------------
+-- Source Code: SQL Server 2008 Transact-SQL Recipes, Joseph Sack
+-----------------------------------------------------------------------
+-- Do not execute the following code in a single batch.  These samples
+-- are provided in order to follow along with specific recipes.  
+-----------------------------------------------------------------------
+
+-- Creating a Basic View
+
+USE AdventureWorks
+GO
+
+CREATE VIEW dbo.v_Product_TransactionHistory
+AS
+SELECT p.Name ProductName,
+p.ProductNumber,
+c.Name ProductCategory,
+s.Name ProductSubCategory,
+m.Name ProductModel,
+t.TransactionID,
+t.ReferenceOrderID,
+t.ReferenceOrderLineID,
+t.TransactionDate,
+t.TransactionType,
+t.Quantity,
+t.ActualCost
+FROM Production.TransactionHistory t
+INNER JOIN Production.Product p ON
+t.ProductID = p.ProductID
+INNER JOIN Production.ProductModel m ON
+m.ProductModelID = p.ProductModelID
+INNER JOIN Production.ProductSubcategory s ON
+s.ProductSubcategoryID = p.ProductSubcategoryID
+INNER JOIN Production.ProductCategory c ON
+c.ProductCategoryID = s.ProductCategoryID
+WHERE c.Name = 'Bikes'
+GO
+
+SELECT ProductName, ProductModel, ReferenceOrderID, ActualCost
+FROM dbo.v_Product_TransactionHistory
+ORDER BY ProductName
+
+-- Querying the View Definition
+
+SELECT definition FROM sys.sql_modules
+WHERE object_id = OBJECT_ID('v_Product_TransactionHistory')
+
+-- Displaying Views and Their Structures
+
+SELECT s.name SchemaName,
+v.name ViewName
+FROM sys.views v
+INNER JOIN sys.schemas s ON
+v.schema_id = s.schema_id
+ORDER BY s.name,
+v.name
+
+SELECT v.name ViewName,
+c.name ColumnName
+FROM sys.columns c
+INNER JOIN sys.views v ON
+c.object_id = v.object_id
+ORDER BY v.name,
+c.name
+
+
+-- Refreshing a View’s Definition
+
+EXEC sp_refreshview 'dbo.v_Product_TransactionHistory'
+
+EXEC sys.sp_refreshsqlmodule @name = 'dbo.v_Product_TransactionHistory'
+
+-- Modifying a View
+
+-- Add a WHERE clause and remove
+-- the ReferenceOrderID and ReferenceOrderLineID columns
+ALTER VIEW dbo.v_Product_TransactionHistory
+AS
+SELECT p.Name,
+p.ProductNumber,
+t.TransactionID,
+t.TransactionDate,
+t.TransactionType,
+t.Quantity,
+t.ActualCost
+FROM Production.TransactionHistory t
+INNER JOIN Production.Product p ON
+t.ProductID = p.ProductID
+WHERE Quantity > 10
+GO
+
+-- Dropping a View
+
+DROP VIEW dbo.v_Product_TransactionHistory
+
+-- Modifying Data Through aView
+
+CREATE VIEW Production.vw_Location
+AS
+SELECT LocationID,
+Name LocationName,
+CostRate,
+Availability,
+CostRate/Availability CostToAvailabilityRatio
+FROM Production.Location
+GO
+
+INSERT Production.vw_Location
+(LocationName, CostRate, Availability, CostToAvailabilityRatio)
+VALUES ('Finishing Cabinet', 1.22, 75.00, 0.01626 )
+
+INSERT Production.vw_Location
+(LocationName, CostRate, Availability)
+VALUES ('Finishing Cabinet', 1.22, 75.00)
+
+-- Encrypting aView
+
+CREATE VIEW dbo.v_Product_TopTenListPrice
+WITH ENCRYPTION
+AS
+SELECT TOP 10
+p.Name,
+p.ProductNumber,
+p.ListPrice
+FROM Production.Product p
+ORDER BY p.ListPrice DESC
+GO
+
+SELECT definition
+FROM sys.sql_modules
+WHERE object_id = OBJECT_ID('v_Product_TopTenListPrice')
+
+-- Creating an Indexed View
+
+CREATE VIEW dbo.v_Product_Sales_By_LineTotal
+WITH SCHEMABINDING
+AS
+SELECT p.ProductID, p.Name ProductName,
+SUM(LineTotal) LineTotalByProduct,
+COUNT_BIG(*) LineItems
+FROM Sales.SalesOrderDetail s
+INNER JOIN Production.Product p ON
+s.ProductID = p.ProductID
+GROUP BY p.ProductID, p.Name
+GO
+
+SET STATISTICS IO ON
+GO
+
+SELECT TOP 5 ProductName, LineTotalByProduct
+FROM v_Product_Sales_By_LineTotal
+ORDER BY LineTotalByProduct DESC
+
+CREATE UNIQUE CLUSTERED INDEX UCI_v_Product_Sales_By_LineTotal
+ON dbo.v_Product_Sales_By_LineTotal (ProductID)
+GO
+
+CREATE NONCLUSTERED INDEX NI_v_Product_Sales_By_LineTotal
+ON dbo.v_Product_Sales_By_LineTotal (ProductName)
+GO
+
+SELECT TOP 5 ProductName, LineTotalByProduct
+FROM v_Product_Sales_By_LineTotal
+ORDER BY LineTotalByProduct DESC
+
+-- Forcing the Optimizer to Use an Index for an IndexedView
+
+SELECT ProductID
+FROM dbo.v_Product_Sales_By_LineTotal
+WITH (NOEXPAND)
+WHERE ProductName = 'Short-Sleeve Classic Jersey, L'
+
+SELECT ProductID
+FROM dbo.v_Product_Sales_By_LineTotal
+WITH (NOEXPAND, INDEX(NI_v_Product_Sales_By_LineTotal))
+WHERE ProductName = 'Short-Sleeve Classic Jersey, L'
+
+-- Creating a Distributed-Partitioned View
+
+USE master
+GO
+EXEC sp_addlinkedserver
+'JOEPROD',
+N'SQL Server'
+GO
+
+-- skip schema checking of remote tables
+EXEC sp_serveroption 'JOEPROD', 'lazy schema validation', 'true'
+GO
+
+USE master
+GO
+EXEC sp_addlinkedserver
+'JOEPROD\SQL2008',
+N'SQL Server'
+GO
+
+-- skip schema checking of remote tables
+EXEC sp_serveroption 'JOEPROD\SQL2008', 'lazy schema validation', 'true'
+GO
+
+IF NOT EXISTS (SELECT name
+FROM sys.databases
+WHERE name = 'TSQLRecipeTest')
+BEGIN
+CREATE DATABASE TSQLRecipeTest
+END
+GO
+
+Use TSQLRecipeTest
+GO
+
+CREATE TABLE dbo.WebHits_MegaCorp
+(WebHitID uniqueidentifier NOT NULL,
+WebSite varchar(20) NOT NULL ,
+HitDT datetime NOT NULL,
+CHECK (WebSite = 'MegaCorp'),
+CONSTRAINT PK_WebHits PRIMARY KEY (WebHitID, WebSite))
+
+IF NOT EXISTS (SELECT name
+FROM sys.databases
+WHERE name = 'TSQLRecipeTest')
+BEGIN
+CREATE DATABASE TSQLRecipeTest
+END
+GO
+
+USE TSQLRecipeTest
+GO
+
+CREATE TABLE dbo.WebHits_MiniCorp
+(WebHitID uniqueidentifier NOT NULL ,
+WebSite varchar(20) NOT NULL ,
+HitDT datetime NOT NULL,
+CHECK (WebSite = 'MiniCorp') ,
+CONSTRAINT PK_WebHits PRIMARY KEY (WebHitID, WebSite))
+
+CREATE VIEW dbo.v_WebHits AS
+SELECT WebHitID,
+WebSite,
+HitDT
+FROM TSQLRecipeTest.dbo.WebHits_MegaCorp
+UNION ALL
+SELECT WebHitID,
+WebSite,
+HitDT
+FROM JOEPROD.TSQLRecipeTest.dbo.WebHits_MiniCorp
+GO
+
+CREATE VIEW dbo.v_WebHits AS
+SELECT WebHitID,
+WebSite,
+HitDT
+FROM TSQLRecipeTest.dbo.WebHits_MiniCorp
+UNION ALL
+SELECT WebHitID,
+WebSite,
+HitDT
+FROM [JOEPROD\SQL2008].TSQLRecipeTest.dbo.WebHits_MegaCorp
+GO
+
+SET XACT_ABORT ON
+
+INSERT dbo.v_WebHits
+(WebHitID, WebSite, HitDT)
+VALUES(NEWID(), 'MegaCorp', GETDATE())
+
+INSERT dbo.v_WebHits
+(WebHitID, WebSite, HitDT)
+VALUES(NEWID(), 'MiniCorp', GETDATE())
+
+SET XACT_ABORT ON
+
+SELECT WebHitID, WebSite, HitDT
+FROM dbo.v_WebHits
+
+SELECT WebHitID, WebSite, HitDT
+FROM JOEPROD.AdventureWorks.dbo.WebHits_MiniCorp
+
+SELECT WebHitID, WebSite, HitDT
+FROM [JOEPROD\SQL2008].AdventureWorks.dbo.WebHits_MegaCorp
+
+
+

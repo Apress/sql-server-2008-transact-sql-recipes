@@ -1,0 +1,115 @@
+-----------------------------------------------------------------------
+-- Source Code: SQL Server 2008 Transact-SQL Recipes, Joseph Sack
+-----------------------------------------------------------------------
+-- Do not execute the following code in a single batch.  These samples
+-- are provided in order to follow along with specific recipes.  
+-----------------------------------------------------------------------
+
+-- Checking Consistency of the Disk Space Allocation Structures with DBCC CHECKALLOC
+
+DBCC CHECKALLOC ('AdventureWorks')
+
+-- Checking Allocation and Structural Integrity with DBCC CHECKDB
+
+DBCC CHECKDB('AdventureWorks')
+
+-- Checking Allocation and Structural Integrity of All Tables in a Filegroup Using DBCC CHECKFILEGROUP
+
+USE AdventureWorks
+GO
+DBCC CHECKFILEGROUP('PRIMARY')
+
+-- Checking Data Integrity for Tables and Indexed Views Using DBCC CHECKTABLE
+
+DBCC CHECKTABLE ('Production.Product')
+WITH ALL_ERRORMSGS
+
+DBCC CHECKTABLE ('Sales.SalesOrderDetail')
+WITH ESTIMATEONLY
+
+SELECT index_id
+FROM sys.indexes
+WHERE object_id = OBJECT_ID('Sales.SalesOrderDetail')
+AND name = 'IX_SalesOrderDetail_ProductID'
+
+DBCC CHECKTABLE ('Sales.SalesOrderDetail', 3)
+WITH PHYSICAL_ONLY
+
+-- Checking Table Integrity with DBCC CHECKCONSTRAINTS
+
+ALTER TABLE Production.WorkOrder NOCHECK CONSTRAINT CK_WorkOrder_EndDate
+GO
+
+-- Set an EndDate to earlier than a StartDate
+UPDATE Production.WorkOrder
+SET EndDate = '1/1/2001'
+WHERE WorkOrderID = 1
+GO
+
+ALTER TABLE Production.WorkOrder CHECK CONSTRAINT CK_WorkOrder_EndDate
+GO
+
+DBCC CHECKCONSTRAINTS ('Production.WorkOrder')
+
+-- Checking System Table Consistency with DBCC CHECKCATALOG
+
+DBCC CHECKCATALOG ('AdventureWorks')
+
+-- Rebuilding Indexes
+
+-- Rebuild a specific index
+ALTER INDEX PK_ShipMethod_ShipMethodID
+ON Purchasing.ShipMethod REBUILD
+
+-- Rebuild all indexes on a specific table
+ALTER INDEX ALL
+ON Purchasing.PurchaseOrderHeader REBUILD
+
+-- Rebuild an index, while keeping it available
+-- for queries (requires Enterprise Edition)
+ALTER INDEX PK_ProductReview_ProductReviewID
+ON Production.ProductReview REBUILD
+WITH (ONLINE = ON)
+
+-- Rebuild an index, using a new fill factor and
+-- sorting in tempdb
+ALTER INDEX PK_TransactionHistory_TransactionID
+ON Production.TransactionHistory REBUILD
+WITH (FILLFACTOR = 75,
+SORT_IN_TEMPDB = ON)
+
+-- Rebuild an index with page-level data compression enabled
+ALTER INDEX PK_ShipMethod_ShipMethodID
+ON Purchasing.ShipMethod REBUILD
+WITH (DATA_COMPRESSION = PAGE)
+
+-- Defragmenting Indexes
+
+-- Reorganize a specific index
+ALTER INDEX PK_TransactionHistory_TransactionID
+ON Production.TransactionHistory
+REORGANIZE
+
+-- Reorganize all indexes for a table
+-- Compact large object data types
+ALTER INDEX ALL
+ON HumanResources.JobCandidate
+REORGANIZE
+WITH (LOB_COMPACTION=ON)
+
+-- Rebuilding a Heap
+
+USE AdventureWorks
+GO
+-- Create an unindexed table based on another table
+SELECT ShiftID, Name, StartTime, EndTime, ModifiedDate
+INTO dbo.Heap_Shift
+FROM HumanResources.Shift
+
+SELECT type_desc
+FROM sys.indexes
+WHERE object_id = OBJECT_ID('Heap_Shift')
+
+ALTER TABLE dbo.Heap_Shift REBUILD
+
+

@@ -1,0 +1,208 @@
+-----------------------------------------------------------------------
+-- Source Code: SQL Server 2008 Transact-SQL Recipes, Joseph Sack
+-----------------------------------------------------------------------
+-- Do not execute the following code in a single batch.  These samples
+-- are provided in order to follow along with specific recipes.  
+-----------------------------------------------------------------------
+
+-- Using CASE to Evaluate a Single Input Expression
+
+USE AdventureWorks
+GO
+
+-- Determine Conference Rooms Based on Department
+SELECT DepartmentID,
+Name,
+GroupName,
+CASE GroupName
+WHEN 'Research and Development' THEN 'Room A'
+WHEN 'Sales and Marketing' THEN 'Room B'
+WHEN 'Manufacturing' THEN 'Room C'
+ELSE 'Room D'
+END ConferenceRoom
+FROM HumanResources.Department
+
+-- Using CASE to Evaluate Boolean Expressions
+
+SELECT DepartmentID,
+Name,
+CASE
+WHEN Name = 'Research and Development'
+THEN 'Room A'
+WHEN (Name = 'Sales and Marketing' OR
+DepartmentID = 10)
+THEN 'Room B'
+WHEN Name LIKE 'T%'
+THEN 'Room C'
+ELSE 'Room D'
+END ConferenceRoom
+FROM HumanResources.Department
+
+-- Using IF...ELSE
+
+DECLARE @QuerySelector int
+SET @QuerySelector = 3
+IF @QuerySelector = 1
+
+BEGIN
+SELECT TOP 3
+ProductID, Name, Color
+FROM Production.Product
+WHERE Color = 'Silver'
+ORDER BY Name
+END
+ELSE
+BEGIN
+SELECT TOP 3
+ProductID, Name, Color
+FROM Production.Product
+WHERE Color = 'Black'
+ORDER BY Name
+END
+
+-- Using RETURN
+
+IF NOT EXISTS
+(SELECT ProductID FROM Production.Product WHERE Color = 'Pink')
+BEGIN
+RETURN
+END
+-- Won't execute
+SELECT ProductID
+FROM Production.Product
+WHERE Color = 'Pink'
+
+-- Create a temporary Stored Procedure that raises a logical error
+CREATE PROCEDURE #usp_TempProc
+AS
+SELECT 1/0
+RETURN @@ERROR
+GO
+
+DECLARE @ErrorCode int
+EXEC @ErrorCode = #usp_TempProc
+PRINT @ErrorCode
+
+-- Using WHILE
+
+-- Declare variables
+DECLARE @AWTables TABLE (SchemaTable varchar(100))
+DECLARE @TableName varchar(100)
+
+-- Insert table names into the table variable
+INSERT @AWTables
+(SchemaTable)
+SELECT TABLE_SCHEMA + '.' + TABLE_NAME
+FROM INFORMATION_SCHEMA.tables
+WHERE TABLE_TYPE = 'BASE TABLE'
+ORDER BY TABLE_SCHEMA + '.' + TABLE_NAME
+
+-- Report on each table using sp_spaceused
+WHILE (SELECT COUNT(*) FROM @AWTables)>0
+BEGIN
+SELECT TOP 1 @TableName = SchemaTable
+FROM @AWTables
+ORDER BY SchemaTable
+EXEC sp_spaceused @TableName
+DELETE @AWTables
+WHERE SchemaTable = @TableName
+END
+
+WHILE (1=1)
+BEGIN
+PRINT 'Endless While, because 1 always equals 1'
+IF 1=1
+BEGIN
+PRINT 'But we didn''t let the endless loop happen'
+BREAK
+END
+ELSE
+BEGIN
+CONTINUE
+END
+END
+
+-- Using GOTO
+
+DECLARE @Name nvarchar(50) = 'Engineering'
+DECLARE @GroupName nvarchar(50) = 'Research and Development'
+DECLARE @Exists bit = 0
+
+IF EXISTS (SELECT Name
+FROM HumanResources.Department
+WHERE Name = @Name)
+BEGIN
+SET @Exists = 1
+GOTO SkipInsert
+END
+
+INSERT HumanResources.Department
+(Name, GroupName)
+VALUES(@Name , @GroupName)
+
+SkipInsert:
+IF @Exists = 1
+BEGIN
+PRINT @Name + ' already exists in HumanResources.Department'
+END
+ELSE
+BEGIN
+PRINT 'Row added'
+END
+
+-- Using WAITFOR
+
+WAITFOR DELAY '00:00:10'
+BEGIN
+SELECT TransactionID, Quantity
+FROM Production.TransactionHistory
+END
+
+WAITFOR TIME '19:01:00'
+BEGIN
+SELECT COUNT(*)
+FROM Production.TransactionHistory
+END
+
+-- Creating and Using Transact-SQL Cursors
+
+-- I won't show rowcounts in the results
+SET NOCOUNT ON
+
+DECLARE @session_id smallint
+
+-- Declare the cursor
+DECLARE session_cursor CURSOR
+FORWARD_ONLY READ_ONLY
+FOR SELECT session_id
+FROM sys.dm_exec_requests
+WHERE status IN ('runnable', 'sleeping', 'running')
+
+-- Open the cursor
+OPEN session_cursor
+
+-- Retrieve one row at a time from the cursor
+FETCH NEXT
+FROM session_cursor
+INTO @session_id
+
+-- Keep retrieving rows while the cursor has them
+WHILE @@FETCH_STATUS = 0
+BEGIN
+
+PRINT 'Spid #: ' + STR(@session_id)
+EXEC ('DBCC OUTPUTBUFFER (' + @session_id + ')')
+-- Grab the next row
+FETCH NEXT
+FROM session_cursor
+INTO @session_id
+
+END
+
+-- Close the cursor
+CLOSE session_cursor
+-- Deallocate the cursor
+DEALLOCATE session_cursor
+
+
+ 

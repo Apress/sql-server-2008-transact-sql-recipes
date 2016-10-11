@@ -1,0 +1,520 @@
+-----------------------------------------------------------------------
+-- Source Code: SQL Server 2008 Transact-SQL Recipes, Joseph Sack
+-----------------------------------------------------------------------
+-- Do not execute the following code in a single batch.  These samples
+-- are provided in order to follow along with specific recipes.  
+-----------------------------------------------------------------------
+
+-- Capturing Executing Queries Using sys.dm_exec_requests
+
+SELECT r.session_id, r.status, r.start_time, r.command, s.text
+FROM sys.dm_exec_requests r
+CROSS APPLY sys.dm_exec_sql_text(r.sql_handle) s
+WHERE r.status = 'running'
+
+-- Viewing Estimated Query Execution Plans Using Transact-SQL Commands
+
+SET SHOWPLAN_TEXT ON
+GO
+SELECT p.Name, p.ProductNumber, r.ReviewerName
+FROM Production.Product p
+INNER JOIN Production.ProductReview r ON
+p.ProductID = r.ProductID
+WHERE r.Rating > 2
+GO
+SET SHOWPLAN_TEXT OFF
+GO
+
+SET SHOWPLAN_XML ON
+GO
+SELECT p.Name, p.ProductNumber, r.ReviewerName
+FROM Production.Product p
+INNER JOIN Production.ProductReview r ON
+p.ProductID = r.ProductID
+WHERE r.Rating > 2
+GO
+SET SHOWPLAN_XML OFF
+GO
+
+-- Viewing Execution Runtime Information
+
+SET STATISTICS IO ON
+GO
+SELECT t.name TerritoryNM,
+SUM(TotalDue) TotalDue
+FROM Sales.SalesOrderHeader h
+INNER JOIN Sales.SalesTerritory t ON
+h.TerritoryID = t.TerritoryID
+WHERE OrderDate BETWEEN '1/1/2003' AND '12/31/2003'
+GROUP BY t.name
+ORDER BY t.name
+SET STATISTICS IO OFF
+GO
+
+-- Viewing Performance Statistics for Cached Query Plans
+
+DBCC FREEPROCCACHE
+GO
+SELECT BusinessEntityID, TerritoryID, SalesQuota
+FROM Sales.SalesPerson
+
+SELECT t.text,
+st.total_logical_reads,
+st.total_physical_reads,
+st.total_elapsed_time/1000000 Total_Time_Secs,
+st.total_logical_writes
+FROM sys.dm_exec_query_stats st
+CROSS APPLY sys.dm_exec_sql_text(st.sql_handle) t
+
+-- Viewing Aggregated Performance Statistics Based on Query or Plan Patterns
+
+SELECT BusinessEntityID
+FROM Purchasing.vVendorWithContacts
+WHERE EmailAddress = 'cheryl1@adventure-works.com'
+
+SELECT BusinessEntityID
+FROM Purchasing.vVendorWithContacts
+WHERE EmailAddress = 'stuart2@adventure-works.com'
+
+SELECT BusinessEntityID
+FROM Purchasing.vVendorWithContacts
+WHERE EmailAddress = 'eunice0@adventure-works.com'
+
+SELECT t.text,
+st.total_logical_reads
+FROM sys.dm_exec_query_stats st
+CROSS APPLY sys.dm_exec_sql_text(st.sql_handle) t
+WHERE text LIKE '%Purchasing.vVendorWithContacts%'
+
+SELECT st.query_hash,
+COUNT(t.text) query_count,
+SUM(st.total_logical_reads) total_logical_reads
+FROM sys.dm_exec_query_stats st
+CROSS APPLY sys.dm_exec_sql_text(st.sql_handle) t
+WHERE text LIKE '%Purchasing.vVendorWithContacts%'
+GROUP BY st.query_hash
+
+-- Identifying the Top Bottleneck
+
+SELECT TOP 2
+wait_type, wait_time_ms
+FROM sys.dm_os_wait_stats
+WHERE wait_type NOT IN
+('LAZYWRITER_SLEEP', 'SQLTRACE_BUFFER_FLUSH',
+'REQUEST_FOR_DEADLOCK_SEARCH', 'LOGMGR_QUEUE',
+'CHECKPOINT_QUEUE', 'CLR_AUTO_EVENT','WAITFOR',
+'BROKER_TASK_STOP', 'SLEEP_TASK', 'BROKER_TO_FLUSH')
+ORDER BY wait_time_ms DESC
+
+DBCC SQLPERF ('sys.dm_os_wait_stats', CLEAR)
+
+-- Identifying I/O Contention by Database and File
+
+SELECT DB_NAME(database_id) DatabaseNM,
+file_id FileID,
+io_stall IOStallsMs,
+size_on_disk_bytes FileBytes,
+num_of_bytes_written BytesWritten,
+num_of_bytes_read BytesRead
+FROM sys.dm_io_virtual_file_stats(NULL, NULL)
+ORDER BY io_stall DESC
+
+-- Displaying Index Fragmentation
+
+USE AdventureWorks
+GO
+SELECT OBJECT_NAME(object_id) ObjectName,
+index_id,
+index_type_desc,
+avg_fragmentation_in_percent
+FROM sys.dm_db_index_physical_stats
+(DB_ID('AdventureWorks'),NULL, NULL, NULL, 'LIMITED')
+WHERE avg_fragmentation_in_percent > 30
+ORDER BY OBJECT_NAME(object_id)
+
+SELECT OBJECT_NAME(f.object_id) ObjectName,
+i.name IndexName,
+f.index_type_desc,
+f.avg_fragmentation_in_percent
+FROM sys.dm_db_index_physical_stats
+(DB_ID('AdventureWorks'),
+OBJECT_ID('Production.ProductDescription'),
+2,
+NULL,
+'LIMITED') f
+INNER JOIN sys.indexes i ON
+i.object_id = f.object_id AND
+i.index_id = f.index_id
+
+-- Displaying Index Usage
+
+SELECT *
+FROM Sales.Customer
+
+SELECT AccountNumber
+FROM Sales.Customer
+WHERE TerritoryID = 4
+
+SELECT i.name IndexName, user_seeks, user_scans,
+last_user_seek, last_user_scan
+FROM sys.dm_db_index_usage_stats s
+INNER JOIN sys.indexes i ON
+s.object_id = i.object_id AND
+s.index_id = i.index_id
+WHERE database_id = DB_ID('AdventureWorks') AND
+s.object_id = OBJECT_ID('Sales.Customer')
+
+-- Manually Creating Statistics
+
+CREATE STATISTICS Stats_Customer_AccountNumber
+ON Sales.Customer (AccountNumber)
+WITH FULLSCAN
+
+-- Creating Statistics on a Subset of Rows
+
+CREATE STATISTICS Stats_SalesOrderDetail_UnitPrice_Filtered
+ON Sales.SalesOrderDetail (UnitPrice)
+WHERE UnitPrice >= 1000.00 AND
+UnitPrice <= 1500.00
+WITH FULLSCAN
+
+-- Updating Statistics
+
+UPDATE STATISTICS Sales.Customer
+WITH FULLSCAN
+
+-- Generating and Updating Statistics Across All Tables
+
+EXEC sp_createstats
+GO
+
+EXEC sp_updatestats
+GO
+
+-- Viewing Statistics Details
+
+DBCC SHOW_STATISTICS ( 'Sales.Customer' , Stats_Customer_AccountNumber)
+
+-- Removing Statistics
+
+DROP STATISTICS Sales.Customer.Stats_Customer_AccountNumber
+
+-- Using an Alternative to Dynamic SQL
+
+EXEC ('SELECT CurrencyCode FROM Sales.Currency')
+
+EXECUTE sp_executesql
+N'SELECT TransactionID, ProductID,
+TransactionType, Quantity
+FROM Production.TransactionHistoryArchive
+WHERE ProductID = @ProductID AND
+TransactionType = @TransactionType AND
+Quantity > @Quantity',
+N'@ProductID int,
+@TransactionType char(1),
+@Quantity int',
+@ProductID =813,
+@TransactionType = 'S',
+@Quantity = 5
+
+-- Forcing SQL Server to Use a Query Plan
+
+SET STATISTICS XML ON
+SELECT TOP 10 Rate
+FROM HumanResources.EmployeePayHistory
+ORDER BY Rate DESC
+SET STATISTICS XML OFF
+
+SELECT TOP 10 Rate
+FROM HumanResources.EmployeePayHistory
+ORDER BY Rate DESC
+OPTION (USE PLAN
+'<ShowPlanXML xmlns="http://schemas.microsoft.com/sqlserver/2004/07/showplan"
+Version="1.1" Build="10.0.1424.2">
+<BatchSequence>
+<Batch>
+<Statements>
+<StmtSimple StatementText="SELECT TOP 10 Rate&#xD;&#xA;FROM
+HumanResources.EmployeePayHistory&#xD;&#xA;ORDER BY Rate DESC&#xD;&#xA;&#xD;"
+StatementId="1" StatementCompId="2" StatementType="SELECT"
+StatementSubTreeCost="0.019825" StatementEstRows="10" StatementOptmLevel="TRIVIAL">
+<StatementSetOptions QUOTED_IDENTIFIER="false" ARITHABORT="true"
+CONCAT_NULL_YIELDS_NULL="false" ANSI_NULLS="false" ANSI_PADDING="false"
+ANSI_WARNINGS="false" NUMERIC_ROUNDABORT="false" />
+<QueryPlan DegreeOfParallelism="0" MemoryGrant="1024" CachedPlanSize="8"
+CompileTime="20" CompileCPU="3" CompileMemory="72">
+<RelOp NodeId="0" PhysicalOp="Sort" LogicalOp="TopN Sort"
+EstimateRows="10" EstimateIO="0.0112613" EstimateCPU="0.00419345" AvgRowSize="15"
+EstimatedTotalSubtreeCost="0.019825" Parallel="0" EstimateRebinds="0"
+EstimateRewinds="0">
+<OutputList>
+<ColumnReference Database="[AdventureWorks]"
+Schema="[HumanResources]" Table="[EmployeePayHistory]" Column="Rate" />
+</OutputList>
+<MemoryFractions Input="1" Output="1" />
+<RunTimeInformation>
+<RunTimeCountersPerThread Thread="0" ActualRows="10"
+ActualRebinds="1" ActualRewinds="0" ActualEndOfScans="1" ActualExecutions="1" />
+</RunTimeInformation>
+<TopSort Distinct="0" Rows="10">
+<OrderBy>
+<OrderByColumn Ascending="0">
+<ColumnReference Database="[AdventureWorks]"
+Schema="[HumanResources]" Table="[EmployeePayHistory]" Column="Rate" />
+</OrderByColumn>
+</OrderBy>
+<RelOp NodeId="1" PhysicalOp="Clustered Index Scan"
+LogicalOp="Clustered Index Scan" EstimateRows="316" EstimateIO="0.00386574"
+EstimateCPU="0.0005046" AvgRowSize="15" EstimatedTotalSubtreeCost="0.00437034"
+TableCardinality="316" Parallel="0" EstimateRebinds="0" EstimateRewinds="0">
+<OutputList>
+<ColumnReference Database="[AdventureWorks]"
+Schema="[HumanResources]" Table="[EmployeePayHistory]" Column="Rate" />
+</OutputList>
+<RunTimeInformation>
+<RunTimeCountersPerThread Thread="0" ActualRows="316"
+ActualEndOfScans="1" ActualExecutions="1" />
+</RunTimeInformation>
+<IndexScan Ordered="0" ForcedIndex="0" NoExpandHint="0">
+<DefinedValues>
+<DefinedValue>
+<ColumnReference Database="[AdventureWorks]"
+Schema="[HumanResources]" Table="[EmployeePayHistory]" Column="Rate" />
+</DefinedValue>
+</DefinedValues>
+<Object Database="[AdventureWorks]" Schema="[HumanResources]"
+Table="[EmployeePayHistory]"
+Index="[PK_EmployeePayHistory_BusinessEntityID_RateChangeDate]"
+IndexKind="Clustered" />
+</IndexScan>
+</RelOp>
+</TopSort>
+</RelOp>
+</QueryPlan>
+</StmtSimple>
+</Statements>
+</Batch>
+</BatchSequence>
+</ShowPlanXML>')
+
+-- Applying Hints Without Modifying Application SQL
+
+EXEC sp_executeSQL
+N'SELECT v.Name ,a.City
+FROM Purchasing.Vendor v
+INNER JOIN [Person].BusinessEntityAddress bea
+ON bea.BusinessEntityID = v.BusinessEntityID
+INNER JOIN Person.Address a
+ON a.AddressID = bea.AddressID'
+
+EXEC sp_create_plan_guide
+@name = N'Vendor_Query_Loop_to_Merge',
+@stmt = N'SELECT v.Name ,a.City
+FROM Purchasing.Vendor v
+INNER JOIN [Person].BusinessEntityAddress bea
+ON bea.BusinessEntityID = v.BusinessEntityID
+INNER JOIN Person.Address a
+ON a.AddressID = bea.AddressID',
+@type = N'SQL',
+@module_or_batch = NULL,
+@params = NULL,
+@hints = N'OPTION (MERGE JOIN)'
+
+SELECT name, is_disabled, scope_type_desc, hints
+FROM sys.plan_guides
+
+-- Creating Plan Guides from Cache
+
+SELECT
+p.Title,
+p.FirstName,
+p.MiddleName,
+p.LastName
+FROM HumanResources.Employee e
+INNER JOIN Person.Person p
+ON p.BusinessEntityID = e.BusinessEntityID
+WHERE Title = 'Ms.'
+
+SELECT plan_handle
+FROM sys.dm_exec_query_stats qs
+CROSS APPLY sys.dm_exec_sql_text(plan_handle) t
+WHERE t.text LIKE 'SELECT%p.Title%' AND
+t.text LIKE '%Ms%
+
+EXEC sp_create_plan_guide_from_handle 'PlanGuide_EmployeeContact',
+@plan_handle = 0x060005006E48752FB080940B000000000000000000000000,
+@statement_start_offset = NULL
+
+SELECT name, query_text, hints
+FROM sys.plan_guides
+
+-- Checking the Validity of a Plan Guide
+
+SELECT pg.plan_guide_id, pg.name, v.msgnum,
+v.severity, v.state, v.message
+FROM sys.plan_guides pg
+CROSS APPLY sys.fn_validate_plan_guide(pg.plan_guide_id) v
+
+-- Parameterizing a Non-parameterized Query Using Plan Guides
+
+SELECT cp.objtype, st.text
+FROM sys.dm_exec_cached_plans cp
+CROSS APPLY sys.dm_exec_sql_text(cp.plan_handle) st
+WHERE st.text LIKE 'SELECT BusinessEntityID%'
+GO
+
+DECLARE @sql nvarchar(max)
+DECLARE @parms nvarchar(max)
+EXEC sp_get_query_template
+N'SELECT BusinessEntityID
+FROM HumanResources.Employee
+WHERE NationalIDNumber = 295847284',
+@sql OUTPUT,
+@parms OUTPUT
+
+EXEC sp_create_plan_guide N'PG_Employee_Contact_Query',
+@sql,
+N'TEMPLATE',
+NULL,
+@parms,
+N'OPTION(PARAMETERIZATION FORCED)'
+
+SELECT BusinessEntityID
+FROM HumanResources.Employee
+WHERE NationalIDNumber = 295847284
+
+SELECT BusinessEntityID
+FROM HumanResources.Employee
+WHERE NationalIDNumber = 245797967
+
+SELECT BusinessEntityID
+FROM HumanResources.Employee
+WHERE NationalIDNumber = 509647174
+
+SELECT usecounts,objtype,text
+FROM sys.dm_exec_cached_plans cp
+CROSS APPLY sys.dm_exec_sql_text(cp.plan_handle) st
+WHERE st.text LIKE '%(@0 int)SELECT BusinessEntityID%' AND
+objtype = 'Prepared'
+
+-- Limiting Competing Query Resource Consumption
+
+CREATE RESOURCE POOL priority_app_queries
+WITH ( MIN_CPU_PERCENT = 25,
+MAX_CPU_PERCENT = 75,
+MIN_MEMORY_PERCENT = 25,
+MAX_MEMORY_PERCENT = 75)
+GO
+
+CREATE RESOURCE POOL ad_hoc_queries
+WITH ( MIN_CPU_PERCENT = 5,
+MAX_CPU_PERCENT = 25,
+MIN_MEMORY_PERCENT = 5,
+MAX_MEMORY_PERCENT = 25)
+GO
+
+ALTER RESOURCE POOL ad_hoc_queries
+WITH ( MIN_MEMORY_PERCENT = 10,
+MAX_MEMORY_PERCENT = 50)
+GO
+
+SELECT pool_id,name,min_cpu_percent,max_cpu_percent,
+min_memory_percent,max_memory_percent
+FROM sys.resource_governor_resource_pools
+
+CREATE WORKLOAD GROUP application_alpha
+WITH
+( IMPORTANCE = HIGH,
+REQUEST_MAX_MEMORY_GRANT_PERCENT = 75,
+REQUEST_MAX_CPU_TIME_SEC = 75,
+REQUEST_MEMORY_GRANT_TIMEOUT_SEC = 120,
+MAX_DOP = 8,
+GROUP_MAX_REQUESTS = 8 )
+USING priority_app_queries
+GO
+
+CREATE WORKLOAD GROUP application_beta
+WITH
+( IMPORTANCE = LOW,
+REQUEST_MAX_MEMORY_GRANT_PERCENT = 50,
+REQUEST_MAX_CPU_TIME_SEC = 50,
+REQUEST_MEMORY_GRANT_TIMEOUT_SEC = 360,
+MAX_DOP = 1,
+GROUP_MAX_REQUESTS = 4 )
+USING priority_app_queries
+GO
+
+ALTER WORKLOAD GROUP application_beta
+WITH ( IMPORTANCE = MEDIUM)
+
+CREATE WORKLOAD GROUP adhoc_users
+WITH
+( IMPORTANCE = LOW,
+REQUEST_MAX_MEMORY_GRANT_PERCENT = 100,
+REQUEST_MAX_CPU_TIME_SEC = 120,
+REQUEST_MEMORY_GRANT_TIMEOUT_SEC = 360,
+MAX_DOP = 1,
+GROUP_MAX_REQUESTS = 5 )
+USING ad_hoc_queries
+GO
+
+SELECT name,
+Importance impt,
+request_max_memory_grant_percent max_m_g,
+request_max_cpu_time_sec max_cpu_sec,
+request_memory_grant_timeout_sec m_g_to,
+max_dop,
+group_max_requests max_req,
+pool_id
+FROM sys.resource_governor_workload_groups
+
+USE master
+GO
+CREATE FUNCTION dbo.JOEPROD_classifier()
+RETURNS sysname
+WITH SCHEMABINDING
+AS
+BEGIN
+DECLARE @resource_group_name sysname
+IF SUSER_SNAME() IN ('AppLogin1', 'AppLogin2')
+SET @resource_group_name = 'application_alpha'
+IF SUSER_SNAME() IN ('AppLogin3', 'AppLogin4')
+SET @resource_group_name = 'application_beta'
+IF HOST_NAME() IN ('Workstation1234', 'Workstation4235')
+SET @resource_group_name = 'adhoc_users'
+-- If the resource group is still unassigned, use default
+IF @resource_group_name IS NULL
+SET @resource_group_name = 'default'
+RETURN @resource_group_name
+END
+GO
+
+-- Assign the classifier function
+ALTER RESOURCE GOVERNOR
+WITH (CLASSIFIER_FUNCTION = dbo.JOEPROD_classifier)
+GO
+
+ALTER RESOURCE GOVERNOR RECONFIGURE
+GO
+
+SELECT OBJECT_NAME(classifier_function_id,DB_ID('master')) Fn_Name,
+is_enabled
+FROM sys.resource_governor_configuration
+
+ALTER RESOURCE GOVERNOR DISABLE
+USE master
+GO
+DROP WORKLOAD GROUP application_alpha
+DROP WORKLOAD GROUP application_beta
+DROP WORKLOAD GROUP adhoc_users
+
+DROP RESOURCE POOL ad_hoc_queries
+DROP RESOURCE POOL priority_app_queries
+
+ALTER RESOURCE GOVERNOR
+WITH (CLASSIFIER_FUNCTION = NULL)
+
+DROP FUNCTION dbo.JOEPROD_classifier
+
+
+ 

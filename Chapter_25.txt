@@ -1,0 +1,162 @@
+-----------------------------------------------------------------------
+-- Source Code: SQL Server 2008 Transact-SQL Recipes, Joseph Sack
+-----------------------------------------------------------------------
+-- Do not execute the following code in a single batch.  These samples
+-- are provided in order to follow along with specific recipes.  
+-----------------------------------------------------------------------
+
+-- Creating Mirroring Endpoints
+
+USE master
+GO
+CREATE LOGIN [JOEPROD\Node2Admin]
+FROM WINDOWS
+GO
+
+-- Create an endpoint on the mirror SQL server instance
+CREATE ENDPOINT JOEPROD_Mirror
+STATE = STARTED
+AS TCP ( LISTENER_PORT = 5022 )
+FOR DATABASE_MIRRORING (
+AUTHENTICATION = WINDOWS NEGOTIATE,
+ENCRYPTION = SUPPORTED,
+ROLE=PARTNER)
+GO
+
+-- Create an endpoint on the primary SQL server instance
+CREATE ENDPOINT JOEPROD_Mirror
+STATE = STARTED
+AS TCP ( LISTENER_PORT = 5022 )
+FOR DATABASE_MIRRORING (
+AUTHENTICATION = WINDOWS NEGOTIATE,
+ENCRYPTION = SUPPORTED,
+ROLE=PARTNER)
+GO
+
+-- Create an endpoint on the witness SQL server instance
+CREATE ENDPOINT JOEPROD_Witness
+STATE = STARTED
+AS TCP ( LISTENER_PORT = 5022 )
+FOR DATABASE_MIRRORING (
+AUTHENTICATION = WINDOWS NEGOTIATE,
+ENCRYPTION = SUPPORTED,
+ROLE=WITNESS)
+GO
+
+SELECT name, state_desc, role_desc
+FROM sys.database_mirroring_endpoints
+
+SELECT name, state_desc, role_desc
+FROM sys.database_mirroring_endpoints
+
+SELECT name, state_desc, role_desc
+FROM sys.database_mirroring_endpoints
+
+-- Backing Up and Restoring Principal Databases
+
+-- This is executing on the principal database SQL Server instance
+USE master
+GO
+IF NOT EXISTS (SELECT name
+FROM sys.databases
+WHERE name = 'BookStore')
+CREATE DATABASE BookStore
+GO
+
+-- Make sure the database is using FULL recovery
+ALTER DATABASE BookStore
+SET RECOVERY FULL
+GO
+
+-- Backing up the BookStore DATABASE
+BACKUP DATABASE BookStore
+TO DISK =
+'C:\Apress\Recipes\Mirror\principalbackup_BookStore.bak'
+WITH INIT
+
+RESTORE DATABASE BookStore
+FROM DISK = 'C:\Apress\Recipes\Mirror\principalbackup_BookStore.bak'
+WITH MOVE 'BookStore' TO 'C:\Apress\Recipes\Mirror\BookStore.mdf',
+MOVE 'BookStore_log' TO 'C:\Apress\Recipes\Mirror\BookStore_log.ldf',
+NORECOVERY
+GO
+
+BACKUP LOG BookStore
+TO DISK =
+'C:\Apress\Recipes\Mirror\BookStore_tlog.trn'
+WITH INIT
+
+RESTORE LOG BookStore
+FROM DISK = 'C:\Apress\Recipes\Mirror\BookStore_tlog.trn'
+WITH FILE = 1, NORECOVERY
+
+-- Creating a Database Mirroring Session
+
+-- Set on the mirrored SQL Server instance
+-- Default SAFETY is FULL - synchronous mode
+ALTER DATABASE BookStore
+SET PARTNER = 'TCP://NODE2.JOEPROD.COM:5022'
+GO
+
+-- Enable the mirroring session on the principal SQL Server instance
+-- Default SAFETY is FULL - synchronous mode
+ALTER DATABASE BookStore
+SET PARTNER = 'TCP://NODE1.JOEPROD.COM:5022'
+GO
+
+-- Enable the witness on the principal SQL Server instance
+-- Default SAFETY is FULL - synchronous mode
+ALTER DATABASE BookStore
+SET WITNESS = 'TCP://NODE3.JOEPROD.COM:5022'
+GO
+
+-- Changing Operating Modes
+
+ALTER DATABASE BookStore SET SAFETY OFF
+
+ALTER DATABASE BookStore SET SAFETY FULL
+
+-- Performing Failovers
+
+USE master
+GO
+ALTER DATABASE BookStore SET PARTNER FAILOVER
+
+ALTER DATABASE ReportCentralDB SET PARTNER FORCE_SERVICE_ALLOW_DATA_LOSS
+
+-- Pausing or Resuming a Mirroring Session
+
+ALTER DATABASE BookStore SET PARTNER SUSPEND
+
+SELECT mirroring_state_desc
+FROM sys.database_mirroring
+WHERE database_id = DB_ID('BookStore')
+
+ALTER DATABASE BookStore SET PARTNER RESUME
+
+-- Stopping Mirroring Sessions and Removing Endpoints
+
+ALTER DATABASE BookStore SET PARTNER OFF
+
+-- Executed on the witness server
+DROP ENDPOINT JOEPROD_Witness
+-- Executed on the mirror server
+DROP ENDPOINT JOEPROD_Mirror
+-- Executed on the principal server
+DROP ENDPOINT JOEPROD_Mirror
+
+-- Monitoring Mirror Status
+
+SELECT mirroring_state_desc, mirroring_role_desc, mirroring_safety_level_desc,
+mirroring_witness_state_desc
+FROM sys.database_mirroring
+WHERE database_id = DB_ID('BookStore')
+
+-- Configuring the Connection Timeout Period
+
+ALTER DATABASE BookStore SET PARTNER TIMEOUT 15
+
+SELECT mirroring_connection_timeout
+FROM sys.database_mirroring
+WHERE database_id = DB_ID('BookStore')
+

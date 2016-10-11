@@ -1,0 +1,104 @@
+-----------------------------------------------------------------------
+-- Source Code: SQL Server 2008 Transact-SQL Recipes, Joseph Sack
+-----------------------------------------------------------------------
+-- Do not execute the following code in a single batch.  These samples
+-- are provided in order to follow along with specific recipes.  
+-----------------------------------------------------------------------
+
+-- Forcing a HASH Join
+
+-- (More on SHOWPLAN_XML in Chapter 28)
+SET SHOWPLAN_XML ON
+GO
+
+SELECT p.Name,
+r.ReviewerName,
+r.Rating
+FROM Production.Product p
+INNER JOIN Production.ProductReview r ON
+r.ProductID = p.ProductID
+GO
+
+SET SHOWPLAN_XML OFF
+GO
+
+SET SHOWPLAN_XML ON
+GO
+
+SELECT p.Name,
+r.ReviewerName,
+r.Rating
+FROM Production.Product p
+INNER HASH JOIN Production.ProductReview r ON
+r.ProductID = p.ProductID
+GO
+
+SET SHOWPLAN_XML OFF
+GO
+
+DECLARE @CarrierTrackingNumber nvarchar(25) = '5CE9-4D75-8F'
+
+SELECT SalesOrderID,
+ProductID,
+UnitPrice,
+OrderQty
+FROM Sales.SalesOrderDetail
+WHERE CarrierTrackingNumber = @CarrierTrackingNumber
+ORDER BY SalesOrderID,
+ProductID
+
+SELECT cacheobjtype, objtype, usecounts
+FROM sys.dm_exec_cached_plans
+CROSS APPLY sys.dm_exec_sql_text(plan_handle)
+WHERE text LIKE 'DECLARE @CarrierTrackingNumber%'
+
+DBCC FREEPROCCACHE
+
+DECLARE @CarrierTrackingNumber nvarchar(25) = '5CE9-4D75-8F'
+
+SELECT SalesOrderID,
+ProductID,
+UnitPrice,
+OrderQty
+FROM Sales.SalesOrderDetail
+WHERE CarrierTrackingNumber = @CarrierTrackingNumber
+ORDER BY SalesOrderID,
+ProductID
+OPTION (RECOMPILE)
+
+-- Executing a Query Without Locking
+
+SELECT DocumentID,
+Title
+FROM Production.Document
+WITH (NOLOCK)
+WHERE Status = 1
+
+-- Forcing a SEEK over a SCAN
+
+SET SHOWPLAN_XML ON
+GO
+
+SELECT DISTINCT TransactionID, TransactionDate
+FROM Production.TransactionHistory
+WHERE ReferenceOrderID BETWEEN 1000 AND 100000
+GO
+
+SET SHOWPLAN_XML OFF
+
+SET SHOWPLAN_XML ON
+GO
+
+SELECT DISTINCT TransactionID, TransactionDate
+FROM Production.TransactionHistory WITH (FORCESEEK)
+WHERE ReferenceOrderID BETWEEN 1000 AND 100000
+GO
+
+SET SHOWPLAN_XML OFF
+
+SELECT DISTINCT TransactionID, TransactionDate
+FROM Production.TransactionHistory WITH (FORCESEEK, INDEX
+(IX_TransactionHistory_ReferenceOrderID_ReferenceOrderLineID))
+WHERE ReferenceOrderID BETWEEN 1000 AND 100000
+
+

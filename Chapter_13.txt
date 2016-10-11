@@ -1,0 +1,178 @@
+-----------------------------------------------------------------------
+-- Source Code: SQL Server 2008 Transact-SQL Recipes, Joseph Sack
+-----------------------------------------------------------------------
+-- Do not execute the following code in a single batch.  These samples
+-- are provided in order to follow along with specific recipes.  
+--
+-- ** This file contains non-SQL examples as well (VB.NET and exec calls **
+-----------------------------------------------------------------------
+
+-- Enabling CLR Support in SQL Server
+
+EXEC sp_configure 'clr enabled', 1
+RECONFIGURE WITH OVERRIDE
+GO
+
+IF NOT EXISTS (SELECT 1 FROM sys.databases WHERE name = 'BookStore')
+BEGIN
+CREATE DATABASE BookStore
+END
+GO
+
+ALTER DATABASE BookStore
+SET TRUSTWORTHY ON
+
+
+-- Writing an Assembly for a CLR Stored Procedure
+
+Imports System.Data
+Imports System.Data.Sql
+Imports System.Data.SqlTypes
+Imports Microsoft.SqlServer.Server
+Imports System.IO
+Public Class ReadFiles
+Public Shared Sub Main(ByVal sFile As SqlString)
+Dim sReader As StreamReader = New StreamReader(sFile)
+Dim sLine As String
+Dim sPipe As SqlPipe = SqlContext.Pipe
+Do
+sLine = sReader.ReadLine()
+If Not sLine Is Nothing Then
+sPipe.Send(sLine)
+End If
+Loop Until sLine Is Nothing
+sReader.Close()
+End Sub
+End Class
+
+-- Compiling an Assembly into a DLL File
+
+vbc /t:library /out:C:\Apress\Recipes\CLR\ReadFiles.DLL /r:"C:\Program
+Files\Microsoft SQL Server\MSSQL10.AUGUSTUS\MSSQL\Binn\sqlaccess.dll"
+"C:\Apress\Recipes\CLR\ReadFiles.vb"
+
+-- Loading the Assembly into SQL Server
+
+USE BookStore
+GO
+
+CREATE ASSEMBLY ReadFiles FROM 'C:\Apress\Recipes\CLR\ReadFiles.DLL'
+WITH PERMISSION_SET = EXTERNAL_ACCESS
+GO
+
+-- Creating the CLR Stored Procedure
+
+CREATE PROCEDURE dbo.usp_FileReader
+(@FileName nvarchar(1024))
+AS EXTERNAL NAME ReadFiles.ReadFiles.Main
+GO
+
+EXEC dbo.usp_FileReader
+N'C:\Program Files\Microsoft SQL Server\MSSQL10.AUGUSTUS\MSSQL\LOG\ERRORLOG.1'
+
+-- Creating a CLR Scalar User-Defined Function
+
+Imports System.Data
+Imports System.Data.Sql
+Imports System.Data.SqlTypes
+Imports Microsoft.SqlServer.Server
+Imports System.Text.RegularExpressions
+Public Class SQLArrayBuilder
+Public Shared Function ChooseValueFromArray(ArrayString as String,
+ArrayDelimiter as String, ArrayItemSelection as SqlInt16) as SqlString
+Dim NewArrayString as String() = Regex.Split(ArrayString, ArrayDelimiter)
+Dim NewArrayItemSelection as SqlInt16=ArrayItemSelection-1
+Dim ReturnString as SQLString = NewArrayString(NewArrayItemSelection)
+Return ReturnString
+End Function
+End Class
+
+CREATE ASSEMBLY SQLArrayBuilder FROM 'C:\Apress\Recipes\CLR\SQLArrayBuilder.DLL'
+WITH PERMISSION_SET = SAFE
+GO
+
+CREATE FUNCTION dbo.CountSalesOrderHeader
+(@ArrayString nvarchar(4000), @ArrayDelimiter nchar(1),
+@ArrayItemSelection smallint)
+RETURNS nvarchar(4000)
+AS
+EXTERNAL NAME SQLArrayBuilder.SQLArrayBuilder.ChooseValueFromArray
+GO
+
+SELECT dbo.CountSalesOrderHeader
+('Brian,Steve,Boris,Tony,Russ', ',', 3) Choice
+
+SELECT dbo.CountSalesOrderHeader
+('Brian,Steve,Boris,Tony,Russ', ',', 2) Choice
+
+-- Creating a CLR Trigger
+
+USE BookStore
+GO
+
+CREATE TABLE dbo.DataWarehouseLoadHistory
+(DataWarehouseLoadHistoryID int
+NOT NULL IDENTITY(1,1) PRIMARY KEY ,
+LoadDT datetime NOT NULL)
+GO
+
+Imports System
+Imports System.Data
+Imports System.Data.Sql
+Imports System.Data.SqlTypes
+Imports System.Data.SqlClient
+Imports Microsoft.SqlServer.Server
+Imports System.IO
+Public Class DW_Trigger
+Public Shared Sub ExportFile()
+Dim DWTrigger As SqlTriggerContext
+DWTrigger = SqlContext.TriggerContext
+If (DWTrigger.TriggerAction = _
+TriggerAction.Insert) Then
+Dim DWsw As StreamWriter = New _
+StreamWriter("C:\DataWarehouseLoadTrigger.txt")
+DWsw.WriteLine(Now())
+DWsw.Close()
+End If
+End Sub
+End Class
+
+CREATE ASSEMBLY DataWarehouseLoadNotification
+FROM 'C:\Apress\Recipes\CLR\DataWarehouseLoadNotification.dll'
+WITH PERMISSION_SET = EXTERNAL_ACCESS
+GO
+
+CREATE TRIGGER dbo.trg_i_DWNotify
+ON dbo.DataWarehouseLoadHistory AFTER INSERT
+AS
+EXTERNAL NAME DataWarehouseLoadNotification.DW_Trigger.ExportFile
+
+INSERT dbo.DataWarehouseLoadHistory
+(LoadDT)
+VALUES(GETDATE())
+
+-- Viewing Assembly Metadata
+
+SELECT name, permission_set_desc
+FROM sys.assemblies
+
+-- Modifying an Assembly’s Permissions
+
+ALTER ASSEMBLY ReadFiles
+WITH PERMISSION_SET = SAFE
+
+EXEC dbo.usp_FileReader
+N'C:\Program Files\Microsoft SQL Server\MSSQL10.AUGUSTUS\MSSQL\LOG\ERRORLOG.1'
+
+-- Removing an Assembly fromthe Database
+
+DROP ASSEMBLY ReadFiles
+
+
+
+
+
+
+
+
+

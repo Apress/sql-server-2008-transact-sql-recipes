@@ -1,0 +1,76 @@
+-----------------------------------------------------------------------
+-- Source Code: SQL Server 2008 Transact-SQL Recipes, Joseph Sack
+-----------------------------------------------------------------------
+-- Do not execute the following code in a single batch.  These samples
+-- are provided in order to follow along with specific recipes.  
+-----------------------------------------------------------------------
+
+-- Creating and Querying Database Snapshots
+
+CREATE DATABASE AdventureWorks_Snapshot_Oct_08_2008
+ON
+( NAME = AdventureWorks2008_Data,
+FILENAME =
+'C:\Apress\Recipes\AdventureWorks_Snapshot_Oct_08_2008.mdf')
+AS SNAPSHOT OF AdventureWorks
+GO
+
+USE AdventureWorks
+GO
+UPDATE HumanResources.Department
+SET GroupName = 'Materials'
+WHERE Name='Production'
+GO
+
+SELECT GroupName
+FROM AdventureWorks.HumanResources.Department
+WHERE Name='Production'
+
+SELECT GroupName
+FROM AdventureWorks_Snapshot_Oct_08_2008.HumanResources.Department
+WHERE Name='Production'
+
+-- Removing a Database Snapshot
+
+DROP DATABASE AdventureWorks_Snapshot_Oct_08_2008
+
+-- Recovering Data with a Database Snapshot
+
+IF NOT EXISTS (SELECT name
+FROM sys.databases
+WHERE name = 'TSQL_AW')
+BEGIN
+CREATE DATABASE TSQL_AW
+END
+GO
+USE TSQL_AW
+GO
+
+SELECT BusinessEntityID, CreditCardID, ModifiedDate
+INTO dbo.PersonCreditCard
+FROM AdventureWorks.Sales.PersonCreditCard
+
+CREATE DATABASE TSQL_AW_Oct_09_2008
+ON
+( NAME = TSQL_AW,
+FILENAME = 'C:\Apress\Recipes\TSQL_AW_Oct_09_2008.mdf')
+AS SNAPSHOT OF TSQL_AW
+GO
+
+USE TSQL_AW
+GO
+DELETE dbo.PersonCreditCard
+
+SELECT COUNT(*)
+FROM dbo.PersonCreditCard
+
+USE master
+GO
+RESTORE DATABASE TSQL_AW
+FROM DATABASE_SNAPSHOT = 'TSQL_AW_Oct_09_2008'
+
+USE TSQL_AW
+GO
+SELECT COUNT(*)
+FROM dbo.PersonCreditCard
+

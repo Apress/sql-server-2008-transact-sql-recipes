@@ -1,0 +1,473 @@
+-----------------------------------------------------------------------
+-- Source Code: SQL Server 2008 Transact-SQL Recipes, Joseph Sack
+-----------------------------------------------------------------------
+-- Do not execute the following code in a single batch.  These samples
+-- are provided in order to follow along with specific recipes.  
+-----------------------------------------------------------------------
+
+-- Creating an AFTER DML Trigger
+
+-- Track all Inserts, Updates, and Deletes
+CREATE TABLE Production.ProductInventoryAudit
+(ProductID int NOT NULL ,
+LocationID smallint NOT NULL ,
+Shelf nvarchar(10) NOT NULL ,
+Bin tinyint NOT NULL ,
+Quantity smallint NOT NULL ,
+rowguid uniqueidentifier NOT NULL ,
+ModifiedDate datetime NOT NULL ,
+InsOrUPD char(1) NOT NULL )
+GO
+
+-- Create trigger to populate Production.ProductInventoryAudit table
+CREATE TRIGGER Production.trg_uid_ProductInventoryAudit
+ON Production.ProductInventory
+AFTER INSERT, DELETE
+AS
+SET NOCOUNT ON
+
+-- Inserted rows
+INSERT Production.ProductInventoryAudit
+(ProductID, LocationID, Shelf, Bin, Quantity,
+rowguid, ModifiedDate, InsOrUPD)
+SELECT DISTINCT i.ProductID, i.LocationID, i.Shelf, i.Bin, i.Quantity,
+i.rowguid, GETDATE(), 'I'
+FROM inserted i
+
+-- Deleted rows
+INSERT Production.ProductInventoryAudit
+(ProductID, LocationID, Shelf, Bin, Quantity,
+rowguid, ModifiedDate, InsOrUPD)
+SELECT d.ProductID, d.LocationID, d.Shelf, d.Bin, d.Quantity,
+d.rowguid, GETDATE(), 'D'
+FROM deleted d
+
+GO
+
+-- Insert a new row
+INSERT Production.ProductInventory
+(ProductID, LocationID, Shelf, Bin, Quantity)
+VALUES (316, 6, 'A', 4, 22)
+
+-- Delete a row
+DELETE Production.ProductInventory
+WHERE ProductID = 316 AND
+LocationID = 6
+
+-- Check the audit table
+SELECT ProductID, LocationID, InsOrUpd
+FROM Production.ProductInventoryAudit
+
+-- Creating an INSTEAD OF DML Trigger
+
+USE AdventureWorks
+GO
+
+-- Create Department "Approval" table
+CREATE TABLE HumanResources.DepartmentApproval
+(Name nvarchar(50) NOT NULL UNIQUE,
+GroupName nvarchar(50) NOT NULL,
+ModifiedDate datetime NOT NULL DEFAULT GETDATE())
+GO
+
+-- Create view to see both approved and pending approval departments
+CREATE VIEW HumanResources.vw_Department
+AS
+SELECT Name, GroupName, ModifiedDate, 'Approved' Status
+FROM HumanResources.Department
+UNION
+SELECT Name, GroupName, ModifiedDate, 'Pending Approval' Status
+FROM HumanResources.DepartmentApproval
+GO
+
+-- Create an INSTEAD OF trigger on the new view
+CREATE TRIGGER HumanResources.trg_vw_Department
+ON HumanResources.vw_Department
+INSTEAD OF
+INSERT
+AS
+SET NOCOUNT ON
+INSERT HumanResources.DepartmentApproval
+(Name, GroupName)
+SELECT i.Name, i.GroupName
+FROM inserted i
+WHERE i.Name NOT IN (SELECT Name FROM HumanResources.DepartmentApproval)
+GO
+
+-- Insert into the new view, even though view is a UNION
+-- of two different tables
+INSERT HumanResources.vw_Department
+(Name, GroupName)
+VALUES ('Print Production', 'Manufacturing')
+
+-- Check the view's contents
+SELECT Status, Name
+FROM HumanResources.vw_Department
+WHERE GroupName = 'Manufacturing'
+
+-- Handling TransactionsWithin DML Triggers
+
+USE AdventureWorks
+GO
+-- Remove trigger if one already exists with same name
+IF EXISTS
+(SELECT 1
+FROM sys.triggers
+WHERE object_id =
+OBJECT_ID(N'[Production].[trg_uid_ProductInventoryAudit]'))
+DROP TRIGGER [Production].[trg_uid_ProductInventoryAudit]
+GO
+
+CREATE TRIGGER Production.trg_uid_ProductInventoryAudit
+ON Production.ProductInventory
+AFTER INSERT, DELETE
+AS
+SET NOCOUNT ON
+
+IF EXISTS
+(SELECT Shelf
+FROM inserted
+WHERE Shelf = 'A')
+BEGIN
+PRINT 'Shelf ''A'' is closed for new inventory.'
+ROLLBACK
+END
+
+-- Inserted rows
+INSERT Production.ProductInventoryAudit
+(ProductID, LocationID, Shelf, Bin, Quantity,
+rowguid, ModifiedDate, InsOrUPD)
+SELECT DISTINCT i.ProductID, i.LocationID, i.Shelf, i.Bin, i.Quantity,
+i.rowguid, GETDATE(), 'I'
+FROM inserted i
+
+-- Deleted rows
+INSERT Production.ProductInventoryAudit
+(ProductID, LocationID, Shelf, Bin, Quantity,
+rowguid, ModifiedDate, InsOrUPD)
+SELECT d.ProductID, d.LocationID, d.Shelf, d.Bin, d.Quantity,
+d.rowguid, GETDATE(), 'D'
+FROM deleted d
+
+IF EXISTS
+(SELECT Quantity
+FROM deleted
+WHERE Quantity > 0)
+BEGIN
+PRINT 'You cannot remove positive quantity rows!'
+ROLLBACK
+END
+GO
+
+INSERT Production.ProductInventory
+(ProductID, LocationID, Shelf, Bin, Quantity)
+VALUES (316, 6, 'A', 4, 22)
+
+BEGIN TRANSACTION
+
+-- Deleting a row with a zero quantity
+DELETE Production.ProductInventory
+WHERE ProductID = 853 AND
+LocationID = 7
+
+-- Deleting a row with a non-zero quantity
+DELETE Production.ProductInventory
+WHERE ProductID = 999 AND
+LocationID = 60
+
+COMMIT TRANSACTION
+
+SELECT ProductID, LocationID
+FROM Production.ProductInventory
+WHERE (ProductID = 853 AND
+LocationID = 7) OR
+(ProductID = 999 AND
+LocationID = 60)
+
+-- Controlling DML Triggers Based onModified Columns
+
+USE AdventureWorks
+GO
+
+CREATE TRIGGER HumanResources.trg_U_Department
+ON HumanResources.Department
+AFTER UPDATE
+AS
+IF UPDATE(GroupName)
+BEGIN
+PRINT 'Updates to GroupName require DBA involvement.'
+ROLLBACK
+END
+GO
+
+UPDATE HumanResources.Department
+SET GroupName = 'Research and Development'
+WHERE DepartmentID = 10
+
+-- Viewing DML Trigger Metadata
+
+-- Show the DML triggers in the current database
+SELECT OBJECT_NAME(parent_id) Table_or_ViewNM,
+name TriggerNM,
+is_instead_of_trigger,
+is_disabled
+FROM sys.triggers
+WHERE parent_class_desc = 'OBJECT_OR_COLUMN'
+ORDER BY OBJECT_NAME(parent_id), name
+
+-- Displays the trigger SQL definition
+--(if the trigger is not encrypted)
+SELECT o.name, m.definition
+FROM sys.sql_modules m
+INNER JOIN sys.objects o ON
+m.object_id = o.object_id
+WHERE o.type = 'TR'
+
+-- Creating a DDL Trigger That Audits Database-Level Events
+
+USE master
+GO
+
+CREATE TABLE dbo.ChangeAttempt
+(EventData xml NOT NULL,
+AttemptDate datetime NOT NULL DEFAULT GETDATE(),
+DBUser char(50) NOT NULL)
+GO
+
+CREATE TRIGGER db_trg_RestrictINDEXChanges
+ON DATABASE
+FOR CREATE_INDEX, ALTER_INDEX, DROP_INDEX
+AS
+
+SET NOCOUNT ON
+
+INSERT dbo.ChangeAttempt
+(EventData, DBUser)
+VALUES (EVENTDATA(), USER)
+GO
+
+CREATE NONCLUSTERED INDEX ni_ChangeAttempt_DBUser ON
+dbo.ChangeAttempt(DBUser)
+GO
+
+SELECT EventData
+FROM dbo.ChangeAttempt
+
+-- Creating a DDL Trigger That Audits Server-Level Events
+
+USE master
+GO
+
+-- Disallow new Logins on the SQL instance
+CREATE TRIGGER srv_trg_RestrictNewLogins
+ON ALL SERVER
+FOR CREATE_LOGIN
+AS
+PRINT 'No login creations without DBA involvement.'
+ROLLBACK
+GO
+
+CREATE LOGIN JoeS WITH PASSWORD = 'A235921'
+GO
+
+DROP TRIGGER srv_trg_RestrictNewLogins
+ON ALL SERVER
+
+-- Using a Logon Trigger
+
+CREATE LOGIN nightworker WITH PASSWORD = 'E74A53C6'
+GO
+
+CREATE DATABASE ExampleAuditDB
+GO
+
+USE ExampleAuditDB
+GO
+
+CREATE TABLE dbo.RestrictedLogonAttempt
+(LoginNM sysname NOT NULL,
+AttemptDT datetime NOT NULL)
+GO
+
+USE master
+GO
+
+CREATE TRIGGER trg_logon_attempt
+ON ALL SERVER
+WITH EXECUTE AS 'sa'
+FOR LOGON
+AS
+BEGIN
+
+IF ORIGINAL_LOGIN()='nightworker' AND
+DATEPART(hh,GETDATE()) BETWEEN 7 AND 17
+BEGIN
+ROLLBACK
+INSERT ExampleAuditDB.dbo.RestrictedLogonAttempt
+(LoginNM, AttemptDT)
+VALUES (ORIGINAL_LOGIN(), GETDATE())
+END
+END
+GO
+
+SELECT LoginNM, AttemptDT
+FROM ExampleAuditDB.dbo.RestrictedLogonAttempt
+
+-- Viewing DDL Trigger Metadata
+
+USE AdventureWorks
+GO
+
+-- Show the DML triggers in the current database
+SELECT name TriggerNM, is_disabled
+FROM sys.triggers
+WHERE parent_class_desc = 'DATABASE'
+ORDER BY OBJECT_NAME(parent_id), name
+
+SELECT name, s.type_desc SQL_or_CLR,
+is_disabled, e.type_desc FiringEvents
+FROM sys.server_triggers s
+INNER JOIN sys.server_trigger_events e ON
+s.object_id = e.object_id
+
+SELECT t.name, m.Definition
+FROM sys.triggers AS t
+INNER JOIN sys.sql_modules m ON
+t.object_id = m.object_id
+WHERE t.parent_class_desc = 'DATABASE'
+
+SELECT t.name, m.definition
+FROM sys.server_sql_modules m
+INNER JOIN sys.server_triggers t ON
+m.object_id = t.object_id
+
+-- Modifying a Trigger
+
+USE master
+GO
+
+ALTER TRIGGER srv_trg_RestrictNewLogins
+ON ALL SERVER
+FOR CREATE_LOGIN
+AS
+SET NOCOUNT ON
+PRINT 'Your login creation is being monitored.'
+
+INSERT AdventureWorks.dbo.ChangeAttempt
+(EventData, DBUser)
+VALUES (EVENTDATA(), USER)
+GO
+
+-- Enabling and Disabling Table Triggers
+
+USE AdventureWorks
+GO
+
+CREATE TRIGGER HumanResources.trg_Department
+ON HumanResources.Department
+AFTER INSERT
+AS
+PRINT 'The trg_Department trigger was fired'
+GO
+
+DISABLE TRIGGER HumanResources.trg_Department
+ON HumanResources.Department
+
+INSERT HumanResources.Department
+(Name, GroupName)
+VALUES ('Construction', 'Building Services')
+
+ENABLE TRIGGER HumanResources.trg_Department
+ON HumanResources.Department
+
+INSERT HumanResources.Department
+(Name, GroupName)
+VALUES ('Cleaning', 'Building Services')
+
+-- Limiting Trigger Nesting
+
+USE master
+GO
+
+-- Disable nesting
+EXEC sp_configure 'nested triggers', 0
+RECONFIGURE WITH OVERRIDE
+GO
+
+-- Enable nesting
+EXEC sp_configure 'nested triggers', 1
+RECONFIGURE WITH OVERRIDE
+GO
+
+-- Controlling Trigger Recursion
+
+-- Allows recursion
+ALTER DATABASE AdventureWorks
+SET RECURSIVE_TRIGGERS ON
+
+-- View the db setting
+SELECT is_recursive_triggers_on
+FROM sys.databases
+WHERE name = 'AdventureWorks'
+
+-- Prevents recursion
+ALTER DATABASE AdventureWorks
+SET RECURSIVE_TRIGGERS OFF
+
+-- View the db setting
+SELECT is_recursive_triggers_on
+FROM sys.databases
+WHERE name = 'AdventureWorks'
+
+-- Setting Trigger Firing Order
+
+CREATE TABLE dbo.TestTriggerOrder
+(TestID int NOT NULL)
+GO
+
+CREATE TRIGGER dbo.trg_i_TestTriggerOrder
+ON dbo.TestTriggerOrder
+AFTER INSERT
+AS
+PRINT 'I will be fired first.'
+GO
+
+CREATE TRIGGER dbo.trg_i_TestTriggerOrder2
+ON dbo.TestTriggerOrder
+AFTER INSERT
+AS
+PRINT 'I will be fired last.'
+GO
+
+CREATE TRIGGER dbo.trg_i_TestTriggerOrder3
+ON dbo.TestTriggerOrder
+AFTER INSERT
+AS
+PRINT 'I won''t be first or last.'
+GO
+
+EXEC sp_settriggerorder 'trg_i_TestTriggerOrder', 'First', 'INSERT'
+EXEC sp_settriggerorder 'trg_i_TestTriggerOrder2', 'Last', 'INSERT'
+
+INSERT dbo.TestTriggerOrder
+(TestID)
+VALUES (1)
+
+-- Dropping a Trigger
+
+-- Drop a DML trigger
+DROP TRIGGER dbo.trg_i_TestTriggerOrder
+
+-- Drop multiple DML triggers
+DROP TRIGGER dbo.trg_i_TestTriggerOrder2, dbo.trg_i_TestTriggerOrder3
+
+-- Drop a DDL trigger
+DROP TRIGGER db_trg_RestrictINDEXChanges
+ON DATABASE
+
+
+
+
+
+
+

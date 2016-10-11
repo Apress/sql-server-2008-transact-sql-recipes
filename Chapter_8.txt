@@ -1,0 +1,608 @@
+-----------------------------------------------------------------------
+-- Source Code: SQL Server 2008 Transact-SQL Recipes, Joseph Sack
+-----------------------------------------------------------------------
+-- Do not execute the following code in a single batch.  These samples
+-- are provided in order to follow along with specific recipes.  
+-----------------------------------------------------------------------
+
+-- Returning the Average of Values
+
+-- Average Product Review by Product
+SELECT ProductID,
+AVG(Rating) AvgRating
+FROM Production.ProductReview
+GROUP BY ProductID
+
+-- Average DISTINCT Standard Cost
+SELECT AVG(DISTINCT StandardCost) AvgDistinctStandardCost
+FROM Production.ProductCostHistory
+
+-- Returning Row Counts
+
+SELECT Shelf,
+COUNT(ProductID) ProductCount
+FROM Production.ProductInventory
+GROUP BY Shelf
+ORDER BY Shelf
+
+SELECT COUNT(DISTINCT Shelf) ShelfCount
+FROM Production.ProductInventory
+
+-- Finding the Lowest and HighestValues froman Expression
+
+SELECT MIN(Rating) MinRating,
+MAX(Rating) MaxRating
+FROM Production.ProductReview
+
+-- Returning the SumofValues
+
+SELECT AccountNumber,
+SUM(TotalDue) TotalDueBySalesOrderID
+FROM Sales.SalesOrderHeader
+GROUP BY AccountNumber
+ORDER BY AccountNumber
+
+-- Using Statistical Aggregate Functions
+
+SELECT VAR(TaxAmt) Variance_Sample,
+VARP(TaxAmt) Variance_EntirePopulation
+FROM Sales.SalesOrderHeader
+
+SELECT STDEV(UnitPrice) StandDevUnitPrice,
+STDEVP(UnitPrice)StandDevPopUnitPrice
+FROM Sales.SalesOrderDetail
+
+-- Performing Mathematical Operations
+
+SELECT POWER(10,2) Result
+
+SELECT SQRT(100) Result
+
+SELECT ROUND(3.22245, 3) RoundedNumber
+
+SELECT RAND() RandomNumber
+
+SELECT RAND(22) Result
+
+-- Converting a CharacterValue to ASCII and Back to Character
+
+SELECT ASCII('H'), ASCII('e'), ASCII('l'), ASCII('l'), ASCII('o')
+
+SELECT CHAR(72), CHAR(101), CHAR(108), CHAR(108), CHAR(111)
+
+-- Returning Integer and Character UnicodeValues
+
+SELECT UNICODE('G'), UNICODE('o'), UNICODE('o'), UNICODE('d'), UNICODE('!')
+
+SELECT NCHAR(71), NCHAR(111), NCHAR(111), NCHAR(100), NCHAR(33)
+
+-- Finding the Start Position of a String Within Another String
+
+SELECT CHARINDEX('String to Find',
+'This is the bigger string to find something in.')
+
+-- Finding the Start Position of a String Within Another String Using Wildcards
+
+SELECT AddressID,
+AddressLine1
+FROM Person.Address
+WHERE PATINDEX('[3][5]%olive%', AddressLine1) > 0
+
+-- Determining the Similarity of Strings
+
+SELECT SOUNDEX('Fleas'),
+SOUNDEX('Fleece'),
+SOUNDEX('Peace'),
+SOUNDEX('Peas')
+
+SELECT DIFFERENCE ( 'Fleas', 'Fleece')
+
+SELECT DIFFERENCE ( 'Fleece', 'Peace')
+
+-- Taking the Leftmost or Rightmost Part of a String
+
+SELECT LEFT('I only want the leftmost 10 characters.', 10)
+
+SELECT RIGHT('I only want the rightmost 10 characters.', 10)
+
+-- Padding a number for business purposes
+SELECT TOP 3
+ProductID, RIGHT('0000000000' + CONVERT(varchar(10), ListPrice),10)
+FROM Production.Product
+WHERE ListPrice > 0
+
+-- Determining the Number of Characters or Bytes in a String
+
+SELECT LEN(N'She sells sea shells by the sea shore.')
+
+SELECT DATALENGTH(N'She sells sea shells by the sea shore.')
+
+-- Replacing a Part of a String
+
+SELECT REPLACE('Zenon is our major profit center. Zenon leads the way.',
+'Zenon',
+'Xerxes')
+
+-- Stuffing a String into a String
+
+SELECT STUFF ( 'My cat''s name is X. Have you met him?',
+18,
+1,
+'Edgar' )
+
+-- Changing Between Lower- and Uppercase
+
+SELECT DocumentSummary
+FROM Production.Document
+WHERE FileName = 'Installing Replacement Pedals.doc'
+
+SELECT LOWER(DocumentSummary)
+FROM Production.Document
+WHERE FileName = 'Installing Replacement Pedals.doc'
+
+SELECT UPPER(DocumentSummary)
+FROM Production.Document
+WHERE FileName = 'Installing Replacement Pedals.doc'
+
+-- Removing Leading and Trailing Blanks
+
+SELECT LTRIM(' String with leading blanks.')
+
+SELECT RTRIM('"' + 'String with trailing blanks ') + '"'
+
+-- Repeating an Expression N Number of Times
+
+SELECT REPLICATE ('Z', 30)
+
+-- Repeating a Blank Space N Number of Times
+
+SELECT 'Give me some' + SPACE(6) + 'space.'
+
+-- Outputting an Expression in Reverse Order
+
+SELECT TOP 1
+GroupName,
+REVERSE(GroupName) GroupNameReversed
+FROM HumanResources.Department
+ORDER BY GroupName
+
+-- Returning a Chunk of an Expression
+
+DECLARE @BankAccountNumber char(14)
+SET @BankAccountNumber = '1424-2342-3536'
+
+SELECT 'XXXX-' + SUBSTRING(@BankAccountNumber, 6,4) + '-XXXX'
+Masked_BankAccountNumber
+
+-- Replacing a NULL Value with an Alternative Value
+
+SELECT JobCandidateID,
+BusinessEntityID,
+ISNULL(BusinessEntityID, 0) Cleaned_BusinessEntityID
+FROM HumanResources.JobCandidate
+
+-- Performing Flexible Searches Using ISNULL
+
+-- Local variables used for searches
+DECLARE @ProductID int
+DECLARE @StartDate datetime
+DECLARE @StandardCost money
+
+-- Only @ProductID is used
+SET @ProductID = 711
+
+SELECT ProductID, StartDate, StandardCost
+FROM Production.ProductCostHistory
+WHERE ProductID = ISNULL(@ProductID, ProductID) AND
+StartDate = ISNULL(@StartDate, StartDate) AND
+StandardCost = ISNULL(@StandardCost, StandardCost)
+
+-- Local variables used for searches
+DECLARE @ProductID int
+DECLARE @MinStandardCost money
+DECLARE @MaxStandardCost money
+
+SET @MinStandardCost = 3.3963
+SET @MaxStandardCost = 10.0000
+
+SELECT ProductID, StartDate, StandardCost
+FROM Production.ProductCostHistory
+WHERE ProductID = ISNULL(@ProductID, ProductID) AND
+StandardCost BETWEEN ISNULL(@MinStandardCost, StandardCost) AND
+ISNULL(@MaxStandardCost, StandardCost)
+ORDER BY StandardCost
+
+-- Returning the First Non-NULLValue in a List of Expressions
+
+DECLARE @Value1 int
+DECLARE @Value2 int
+DECLARE @Value3 int
+
+SET @Value2 = 22
+SET @Value3 = 955
+
+SELECT COALESCE(@Value1, @Value2, @Value3)
+
+-- Returning a NULLValueWhen Two Expressions Are Equal: Otherwise Returning the First Expression
+
+DECLARE @Value1 int
+DECLARE @Value2 int
+
+SET @Value1 = 55
+SET @Value2 = 955
+
+SELECT NULLIF(@Value1, @Value2)
+
+DECLARE @Value1 int
+DECLARE @Value2 int
+
+SET @Value1 = 55
+SET @Value2 = 55
+
+SELECT NULLIF(@Value1, @Value2)
+
+-- Returning the Current Date and Time
+
+SET NOCOUNT ON
+
+SELECT 'CurrDateAndTime_HighPrecision', SYSDATETIME()
+SELECT 'UniversalTimeCoordinate_HighPrecision', SYSUTCDATETIME()
+SELECT 'CurrDateAndTime_HighPrecision _UTC_Adjust', SYSDATETIMEOFFSET()
+
+-- Converting Between Time Zones
+
+SELECT SWITCHOFFSET ( '2007-08-12 09:43:25.9783262 -05:00', '+03:00')
+
+SELECT TODATETIMEOFFSET ( '2007-08-12 09:43:25' , '-05:00' )
+
+-- Incrementing or Decrementing a Date’s Value
+
+SELECT DATEADD(yy, -1, '4/2/2009')
+
+SELECT DATEADD(q, 1, '4/2/2009')
+
+SELECT DATEADD(mm, -6, '4/2/2009')
+
+SELECT DATEADD(d, 50, '4/2/2009')
+
+SELECT DATEADD(mi, -30, '2009-09-01 23:30:00.000')
+
+-- Finding the Difference Between Two Dates
+
+-- Find difference in months between now and EndDate
+
+SELECT ProductID,
+GETDATE() Today,
+EndDate,
+DATEDIFF(m, EndDate, GETDATE()) MonthsFromNow
+FROM Production.ProductCostHistory
+WHERE EndDate IS NOT NULL
+
+-- Displaying the StringValue for Part of a Date
+
+-- Show the EndDate's day of the week
+
+SELECT ProductID,
+EndDate,
+DATENAME(dw, EndDate) WeekDay
+FROM Production.ProductCostHistory
+WHERE EndDate IS NOT NULL
+
+-- Displaying the Integer Representation for Parts of a Date
+
+SELECT DATEPART(yy, GETDATE())
+
+SELECT DATEPART(m, GETDATE())
+
+-- Displaying the IntegerValue for Part of a Date Using YEAR, MONTH, and DAY
+
+SELECT YEAR(GETDATE())
+
+SELECT MONTH(GETDATE())
+
+SELECT DAY(GETDATE())
+
+-- Converting Between Data Types
+
+SELECT 2000 + 'Cannot be concatenated'
+GO
+
+SELECT CONVERT(char(4), 2008) + ' Can now be concatenated!'
+
+SELECT BusinessEntityID, CAST(SickLeaveHours AS char(4)) +
+' Sick Leave Hours Left' SickTime
+FROM HumanResources.Employee
+
+-- Converting Dates to Their Textual Representation
+
+SELECT CONVERT(varchar(20), GETDATE(), 101)
+
+SELECT CONVERT(datetime, CONVERT( varchar(11), '2008-08-13 20:37:22.570', 101))
+
+SELECT CONVERT(date,'2008-08-13 20:37:22.570')
+
+-- Representing Binary Data in String Literals
+
+SELECT CONVERT(char(29),
+0x53514C20536572766572203230303820542D53514C2052656369706573,
+0) ReturnValue
+
+SELECT CONVERT(varbinary, 'SQL Server 2008 T-SQL Recipes', 0) ReturnValue
+
+SELECT CONVERT(char(60),
+0x53514C20536572766572203230303820542D53514C2052656369706573,
+1) ReturnValue_Style_1
+
+SELECT CONVERT(char(60),
+0x53514C20536572766572203230303820542D53514C2052656369706573,
+2) ReturnValue_Style_2
+
+-- Evaluating the Data Type Returned by an Expression
+
+-- Returns 0
+SELECT ISDATE('1/1/20000')
+
+-- Returns 1
+SELECT ISDATE('1/1/2008')
+
+-- Returns 0
+SELECT ISNUMERIC('123ABC')
+
+-- Returns 1
+SELECT ISNUMERIC('123')
+
+-- Generating an Incrementing Row Number
+
+-- Select the rows 255 through 260 in the middle of the result set
+SELECT p.ProductID,
+p.Name,
+p.RowNumber
+FROM
+(SELECT ProductID,
+Name,
+ROW_NUMBER() OVER (ORDER BY Name) RowNumber
+FROM Production.Product) p
+WHERE p.RowNumber BETWEEN 255 AND 260
+
+SELECT Shelf,
+ProductID,
+ROW_NUMBER() OVER
+(PARTITION BY Shelf ORDER BY ProductID) RowNumber
+FROM Production.ProductInventory
+
+-- Returning Rows by Rank
+
+SELECT BusinessEntityID,
+QuotaDate,
+SalesQuota,
+RANK() OVER (ORDER BY SalesQuota DESC) as RANK
+FROM Sales.SalesPersonQuotaHistory
+WHERE SalesQuota BETWEEN 266000.00 AND 319000.00
+
+SELECT h.BusinessEntityID,
+s.TerritoryID,
+h.QuotaDate,
+h.SalesQuota,
+RANK() OVER (PARTITION BY s.TerritoryID ORDER BY h.SalesQuota DESC) as RANK
+FROM Sales.SalesPersonQuotaHistory h
+INNER JOIN Sales.SalesPerson s ON
+h.BusinessEntityID = s.BusinessEntityID
+WHERE s.TerritoryID IN (5,6,7)
+
+-- Returning Rows by RankWithout Gaps
+
+SELECT BusinessEntityID,
+SalesQuota,
+DENSE_RANK() OVER (ORDER BY SalesQuota DESC) as DENSE_RANK
+FROM Sales.SalesPersonQuotaHistory
+WHERE SalesQuota BETWEEN 266000.00 AND 319000.00
+
+-- Using NTILE
+
+SELECT BusinessEntityID,
+SalesQuota,
+NTILE(4) OVER (ORDER BY SalesQuota DESC) as NTILE
+FROM Sales.SalesPersonQuotaHistory
+WHERE SalesQuota BETWEEN 266000.00 AND 319000.00
+
+-- Determining the First Day of theWeek
+
+SELECT @@DATEFIRST 'First Day of the Week'
+
+-- Viewing the Language Used in the Current Session
+
+SELECT @@LANGID LanguageID,
+@@LANGUAGE Language
+
+SET LANGUAGE 'Español'
+SELECT @@LANGID LanguageID,
+@@LANGUAGE Language
+
+-- Viewing and Setting Current Connection Lock Timeout Settings
+
+-- 1000 milliseconds, 1 second
+SET LOCK_TIMEOUT 1000
+
+SELECT @@LOCK_TIMEOUT
+
+-- Unlimited
+SET LOCK_TIMEOUT -1
+
+-- Displaying the Nesting Level for the Current Stored Procedure Context
+
+-- First procedure
+CREATE PROCEDURE dbo.usp_QuickAndDirty
+AS
+SELECT @@NESTLEVEL
+GO
+
+-- Second procedure
+CREATE PROCEDURE dbo.usp_Call_QuickAndDirty
+AS
+SELECT @@NESTLEVEL
+EXEC dbo.usp_QuickAndDirty
+GO
+
+-- Returns 0 nest level
+SELECT @@NESTLEVEL
+
+-- Returns 1 and 2 nest level
+EXEC dbo.usp_Call_QuickAndDirty
+
+--Returning the Current SQL Server Instance Name and SQL ServerVersion
+
+SELECT @@SERVERNAME ServerName,
+@@VERSION VersionInformation
+
+-- Returning the Current Connection’s Session ID (SPID)
+
+SELECT @@SPID SPID
+
+-- Returning the Number of Open Transactions
+
+BEGIN TRAN t1
+SELECT @@TRANCOUNT -- Returns 1
+BEGIN TRAN t2
+SELECT @@TRANCOUNT -- Returns 2
+BEGIN TRAN t3
+SELECT @@TRANCOUNT -- Returns 3
+COMMIT TRAN
+SELECT @@TRANCOUNT -- Returns 2
+ROLLBACK TRAN
+SELECT @@TRANCOUNT -- After ROLLBACK, always Returns 0!
+
+-- Retrieving the Number of Rows Affected by the Previous Statement
+
+SELECT TOP 3 ScrapReasonID
+FROM Production.ScrapReason
+
+SELECT @@ROWCOUNT Int_RowCount, ROWCOUNT_BIG() BigInt_RowCount
+
+-- Retrieving System Statistics
+
+SELECT 'Connections' FunctionNM, @@CONNECTIONS Value
+UNION
+SELECT 'CPUBusy', @@CPU_BUSY
+UNION
+SELECT 'IDLE', @@IDLE
+UNION
+SELECT 'IOBusy', @@IO_BUSY
+UNION
+SELECT 'PacketErrors', @@PACKET_ERRORS
+UNION
+SELECT 'PackReceived', @@PACK_RECEIVED
+UNION
+SELECT 'PackSent', @@PACK_SENT
+UNION
+SELECT 'TimeTicks', @@TIMETICKS
+UNION
+SELECT 'TotalErrors', @@TOTAL_ERRORS
+UNION
+SELECT 'TotalRead', @@TOTAL_READ
+UNION
+SELECT 'TotalWrite', @@TOTAL_WRITE
+
+-- Displaying Database and SQL Server Settings
+
+SELECT DATABASEPROPERTYEX('AdventureWorks', 'Collation'),
+DATABASEPROPERTYEX('AdventureWorks', 'Recovery'),
+DATABASEPROPERTYEX('AdventureWorks', 'Status')
+
+SELECT SERVERPROPERTY ('Collation'),
+SERVERPROPERTY ('Edition')
+
+-- Returning the Current Database ID and Name
+
+SELECT DB_ID() DatabaseID, DB_NAME() DatabaseNM
+
+-- Returning a Database Object Name and ID
+
+SELECT OBJECT_ID('AdventureWorks.HumanResources.Department'),
+OBJECT_NAME(773577794, DB_ID('AdventureWorks'))
+
+-- Returning the Application and Host for the Current User Session
+
+SELECT APP_NAME() as 'Application',
+HOST_ID() as 'Host ID',
+HOST_NAME() as 'Host Name'
+
+-- Reporting Current User and Login Context
+
+SELECT SYSTEM_USER, -- Login
+USER -- Database User
+
+CREATE TABLE #TempExample
+(ExampleColumn varchar(10) NOT NULL,
+ModifiedByLogin varchar(55) NOT NULL DEFAULT SYSTEM_USER,
+ModifiedByUser varchar(55) NOT NULL DEFAULT USER)
+GO
+
+INSERT #TempExample
+(ExampleColumn)
+VALUES ('Value A')
+
+SELECT ExampleColumn, ModifiedByLogin, ModifiedByUser
+FROM #TempExample
+
+-- Viewing User Connection Options
+
+SELECT SESSIONPROPERTY ('ANSI_NULLS') ANSI_NULLS,
+SESSIONPROPERTY ('ANSI_PADDING') ANSI_PADDING,
+SESSIONPROPERTY ('ANSI_WARNINGS') ANSI_WARNINGS,
+SESSIONPROPERTY ('ARITHABORT') ARITHABORT,
+SESSIONPROPERTY ('CONCAT_NULL_YIELDS_NULL') CONCAT_NULL_YIELDS_NULL,
+SESSIONPROPERTY ('NUMERIC_ROUNDABORT') NUMERIC_ROUNDABORT,
+SESSIONPROPERTY ('QUOTED_IDENTIFIER') QUOTED_IDENTIFIER
+
+-- Returning the Last IdentityValue
+
+SELECT IDENT_CURRENT('Production.Product') LastIdentityValue
+
+-- Example insert, generates IDENTITY value in the table
+INSERT HumanResources.Department
+(Name, GroupName)
+VALUES ('TestDept', 'TestGroup')
+
+-- Last identity value generated for any table
+-- in the current session, for the current scope
+SELECT SCOPE_IDENTITY()
+
+-- Last identity value generated for any table
+-- in the current session, in any scope
+SELECT @@IDENTITY
+
+-- Returning an Identity Column’s Seed and IncrementingValue
+
+SELECT IDENT_INCR('Production.Product') IdentIncr,
+IDENT_SEED('Production.Product') IdentSeed
+
+-- Creating a New uniqueidentifierValue
+
+SELECT NEWID()
+
+CREATE TABLE #T4
+(MyValue uniqueidentifier NOT NULL DEFAULT NEWID())
+
+INSERT #T4 DEFAULT VALUES
+
+SELECT MyValue
+FROM #T4
+
+CREATE TABLE #T5
+(MyValue uniqueidentifier NOT NULL DEFAULT NEWSEQUENTIALID(),
+InsertDT datetime2 NOT NULL DEFAULT SYSDATETIME())
+GO
+
+INSERT #T5 DEFAULT VALUES
+INSERT #T5 DEFAULT VALUES
+INSERT #T5 DEFAULT VALUES
+INSERT #T5 DEFAULT VALUES
+INSERT #T5 DEFAULT VALUES
+
+SELECT MyValue, InsertDT
+FROM #T5
+ORDER BY MyValue
+
+
+
+

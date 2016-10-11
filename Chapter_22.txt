@@ -1,0 +1,583 @@
+-----------------------------------------------------------------------
+-- Source Code: SQL Server 2008 Transact-SQL Recipes, Joseph Sack
+-----------------------------------------------------------------------
+-- Do not execute the following code in a single batch.  These samples
+-- are provided in order to follow along with specific recipes.  
+-----------------------------------------------------------------------
+
+-- Creating a Database with a Default Configuration
+
+USE master
+GO
+IF NOT EXISTS (SELECT name
+FROM sys.databases
+WHERE name = 'BookStore')
+CREATE DATABASE BookStore
+GO
+
+-- Viewing Database Information
+
+EXEC sp_helpdb 'BookStore'
+GO
+
+ALTER DATABASE AdventureWorks
+SET COMPATIBILITY_LEVEL = 100
+GO
+
+-- Creating a Database Using File Options
+
+USE master
+GO
+CREATE DATABASE BookStoreArchive
+ON PRIMARY
+( NAME = 'BookStoreArchive',
+FILENAME = 'F:\Apress\BookStoreArchive.mdf' ,
+SIZE = 3MB ,
+MAXSIZE = UNLIMITED,
+FILEGROWTH = 10MB ),
+( NAME = 'BookStoreArchive2',
+FILENAME = 'G:\Apress\BookStoreArchive2.ndf' ,
+SIZE = 1MB ,
+MAXSIZE = 30,
+FILEGROWTH = 5% )
+LOG ON
+( NAME = 'BookStoreArchive_log',
+FILENAME = 'H:\Apress\BookStoreArchive_log.LDF' ,
+SIZE = 504KB ,
+MAXSIZE = 100MB ,
+FILEGROWTH = 10%)
+GO
+
+-- Creating a Database with a User-Defined Filegroup
+
+USE master
+GO
+CREATE DATABASE BookStoreInternational
+ON PRIMARY
+( NAME = 'BookStoreInternational',
+FILENAME = 'C:\Apress\BookStoreInternational.mdf',
+SIZE = 3MB ,
+MAXSIZE = UNLIMITED,
+FILEGROWTH = 5MB ),
+FILEGROUP FG2 DEFAULT
+( NAME = 'BookStoreInternational2',
+FILENAME = 'C:\Apress\BookStoreInternational2.ndf',
+SIZE = 1MB ,
+MAXSIZE = UNLIMITED,
+FILEGROWTH = 1MB )
+LOG ON
+( NAME = 'BookStoreInternational_log',
+FILENAME = 'C:\Apress\BookStoreInternational.ldf',
+SIZE = 504KB ,
+MAXSIZE = 100MB ,
+FILEGROWTH = 10%)
+GO
+
+-- Setting Database User Access
+
+-- Turn off row count messages
+SET NOCOUNT ON
+SELECT user_access_desc
+FROM sys.databases
+WHERE name = 'AdventureWorks'
+
+ALTER DATABASE AdventureWorks
+SET SINGLE_USER
+WITH ROLLBACK IMMEDIATE
+
+SELECT user_access_desc
+FROM sys.databases
+WHERE name = 'AdventureWorks'
+
+ALTER DATABASE AdventureWorks
+SET MULTI_USER
+
+SELECT user_access_desc
+FROM sys.databases
+WHERE name = 'AdventureWorks'
+
+-- Renaming a Database
+
+USE master
+GO
+-- Create demo database
+CREATE DATABASE BookWarehouse
+GO
+ALTER DATABASE BookWarehouse
+SET SINGLE_USER
+WITH ROLLBACK IMMEDIATE
+GO
+ALTER DATABASE BookWarehouse
+MODIFY NAME = BookMart
+GO
+ALTER DATABASE BookMart
+SET MULTI_USER
+GO
+
+-- Dropping a Database
+
+USE master
+GO
+-- Create demonstration database
+CREATE DATABASE BookStoreArchive_Ukrainian
+GO
+ALTER DATABASE BookStoreArchive_Ukrainian
+SET SINGLE_USER
+WITH ROLLBACK IMMEDIATE
+GO
+DROP DATABASE BookStoreArchive_Ukrainian
+GO
+
+-- Detaching a Database
+
+-- Create a default example database to detach
+USE master
+GO
+CREATE DATABASE TestDetach
+GO
+
+-- Kick out any users currently in the database
+ALTER DATABASE TestDetach
+SET SINGLE_USER
+WITH ROLLBACK IMMEDIATE
+
+-- Detach the database
+EXEC sp_detach_db 'TestDetach',
+'false' -- don't skip checks
+
+-- Attaching a Database
+
+CREATE DATABASE TestAttach
+ON (FILENAME = 'C:\Program Files\Microsoft SQL Server\MSSQL10.AUGUSTUS\MSSQL\DATA\TestDetach.mdf')
+FOR ATTACH
+
+-- Viewing Database Options
+
+SELECT name, is_read_only, is_auto_close_on, is_auto_shrink_on
+FROM sys.databases
+WHERE name = 'AdventureWorks'
+
+-- Configuring ANSI SQL Options
+
+SET NOCOUNT ON
+SELECT is_ansi_nulls_on
+FROM sys.databases
+WHERE name = 'AdventureWorks'
+
+ALTER DATABASE AdventureWorks
+SET ANSI_NULLS OFF
+
+SELECT is_ansi_nulls_on
+FROM sys.databases
+WHERE name = 'AdventureWorks'
+
+-- Configuring Automatic Options
+
+SET NOCOUNT ON
+SELECT is_auto_update_stats_async_on
+FROM sys.databases
+WHERE name = 'AdventureWorks'
+
+ALTER DATABASE AdventureWorks
+SET AUTO_UPDATE_STATISTICS_ASYNC ON
+
+SELECT is_auto_update_stats_async_on
+FROM sys.databases
+WHERE name = 'AdventureWorks'
+
+-- Creating or Modifying a Database to Allow External Access
+
+USE master
+GO
+-- Create a database with the model database defaults
+CREATE DATABASE BookData
+WITH DB_CHAINING ON
+GO
+
+USE master
+GO
+-- Now modify the new database to also have the
+-- TRUSTWORTHY option ON
+ALTER DATABASE BookData
+SET TRUSTWORTHY ON
+GO
+
+-- Creating or Changing a Database to Use a Non-Server Default Collation
+
+CREATE DATABASE BookStoreArchive_Ukrainian
+ON PRIMARY
+( NAME = 'BookStoreArchive_UKR',
+FILENAME = 'C:\Apress\BookStoreArchive_UKR.mdf',
+SIZE = 3MB ,
+MAXSIZE = UNLIMITED,
+FILEGROWTH = 10MB )
+LOG ON
+( NAME = 'BookStoreArchive_UKR_log',
+FILENAME = 'C:\Apress\BookStoreArchive_UKR_log.ldf',
+SIZE = 504KB ,
+MAXSIZE = 100MB ,
+FILEGROWTH = 10%)
+COLLATE Ukrainian_CI_AI
+GO
+
+ALTER DATABASE BookStoreArchive_Ukrainian
+COLLATE Ukrainian_CS_AS
+GO
+
+-- Configuring Cursor Options
+
+SET NOCOUNT ON
+SELECT is_cursor_close_on_commit_on
+FROM sys.databases
+WHERE name = 'AdventureWorks'
+
+ALTER DATABASE AdventureWorks
+SET CURSOR_CLOSE_ON_COMMIT ON
+
+SELECT is_cursor_close_on_commit_on
+FROM sys.databases
+WHERE name = 'AdventureWorks'
+
+-- Enabling Date Correlation Optimization
+
+SET NOCOUNT ON
+SELECT is_date_correlation_on
+FROM sys.databases
+WHERE name = 'AdventureWorks'
+
+ALTER DATABASE AdventureWorks
+SET DATE_CORRELATION_OPTIMIZATION ON
+
+SELECT is_date_correlation_on
+FROM sys.databases
+WHERE name = 'AdventureWorks'
+
+-- Modifying Database Parameterization Behavior
+
+SELECT is_parameterization_forced
+FROM sys.databases
+WHERE name = 'AdventureWorks'
+
+ALTER DATABASE AdventureWorks
+SET PARAMETERIZATION FORCED
+
+SELECT is_parameterization_forced
+FROM sys.databases
+WHERE name = 'AdventureWorks'
+
+-- CAUTION! Don't run this on a production SQL Server instance.
+-- This clears out the procedure cache and will cause all
+-- new queries to recompile.
+DBCC FREEPROCCACHE
+
+USE AdventureWorks
+GO
+SELECT BirthDate
+FROM HumanResources.Employee
+WHERE BusinessEntityID IN
+(SELECT TOP 3 BusinessEntityID
+FROM Sales.SalesPersonQuotaHistory
+WHERE SalesQuota = 263000.00)
+
+SELECT query_plan
+FROM sys.dm_exec_cached_plans p
+CROSS APPLY sys.dm_exec_query_plan(p.plan_handle)
+WHERE CAST(query_plan as varchar(max))
+LIKE '%TOP 3 BusinessEntityID%' AND
+objtype = 'Prepared'
+
+ALTER DATABASE AdventureWorks
+SET PARAMETERIZATION SIMPLE
+GO
+
+-- Enabling Read Consistency for a Transaction
+
+SELECT snapshot_isolation_state_desc,
+is_read_committed_snapshot_on
+FROM sys.databases
+WHERE name = 'AdventureWorks'
+
+ALTER DATABASE AdventureWorks
+SET ALLOW_SNAPSHOT_ISOLATION ON
+
+ALTER DATABASE AdventureWorks
+SET READ_COMMITTED_SNAPSHOT ON
+
+SELECT snapshot_isolation_state_desc,
+is_read_committed_snapshot_on
+FROM sys.databases
+WHERE name = 'AdventureWorks'
+
+ALTER DATABASE AdventureWorks
+SET ALLOW_SNAPSHOT_ISOLATION OFF
+
+ALTER DATABASE AdventureWorks
+SET READ_COMMITTED_SNAPSHOT OFF
+
+-- Configuring Database RecoveryModels
+
+SELECT recovery_model_desc
+FROM sys.databases
+WHERE name = 'AdventureWorks'
+GO
+ALTER DATABASE AdventureWorks
+SET RECOVERY FULL
+GO
+
+SELECT recovery_model_desc
+FROM sys.databases
+WHERE name = 'AdventureWorks'
+
+-- Configuring Page Verification
+
+SELECT page_verify_option_desc
+FROM sys.databases
+WHERE name = 'AdventureWorks'
+GO
+
+ALTER DATABASE AdventureWorks
+SET PAGE_VERIFY NONE
+GO
+
+SELECT page_verify_option_desc
+FROM sys.databases
+WHERE name = 'AdventureWorks'
+GO
+
+ALTER DATABASE AdventureWorks
+SET PAGE_VERIFY CHECKSUM
+GO
+
+SELECT page_verify_option_desc
+FROM sys.databases
+WHERE name = 'AdventureWorks'
+GO
+
+-- Changing a Database State to Online,Offline, or Emergency
+
+USE master
+GO
+ALTER DATABASE AdventureWorks
+SET OFFLINE
+GO
+
+-- Attempt a read against a table
+SELECT COUNT(*)
+FROM AdventureWorks.HumanResources.Department
+GO
+
+ALTER DATABASE AdventureWorks
+SET ONLINE
+GO
+
+-- Changing a Database Owner
+
+CREATE LOGIN NewBossInTown WITH PASSWORD = 'HereGoesTheNeighborhood10'
+GO
+
+USE BookData
+GO
+EXEC sp_changedbowner 'NewBossInTown'
+GO
+
+SELECT p.name
+FROM sys.databases d
+INNER JOIN sys.server_principals p ON
+d.owner_sid = p.sid
+WHERE d.name = 'BookData'
+
+-- Adding a Data File or Log File to an Existing Database
+
+ALTER DATABASE BookData
+ADD FILE
+( NAME = 'BookData2',
+FILENAME = 'C:\Apress\BD2.NDF' ,
+SIZE = 1MB ,
+MAXSIZE = 10MB,
+FILEGROWTH = 1MB )
+TO FILEGROUP [PRIMARY]
+GO
+
+ALTER DATABASE BookData
+ADD LOG FILE
+( NAME = 'BookData2Log',
+FILENAME = 'C:\Apress\BD2.LDF' ,
+SIZE = 1MB ,
+MAXSIZE = 5MB,
+FILEGROWTH = 1MB )
+GO
+
+-- Removing a Data or Log File froma Database
+
+USE BookData
+GO
+SELECT name
+FROM sys.database_files
+
+DBCC SHRINKFILE(BookData2, EMPTYFILE)
+
+ALTER DATABASE BookData
+REMOVE FILE BookData2
+
+-- Relocating a Data or Transaction Log File
+
+USE master
+GO
+-- Create a default database for this example
+CREATE DATABASE BookTransferHouse
+GO
+
+ALTER DATABASE BookTransferHouse
+SET OFFLINE
+GO
+
+ALTER DATABASE BookTransferHouse
+MODIFY FILE
+(NAME = 'BookTransferHouse', FILENAME = 'C:\Apress\BookTransferHouse.mdf')
+GO
+
+ALTER DATABASE BookTransferHouse
+SET ONLINE
+GO
+
+-- Changing a File’s Logical Name
+
+ALTER DATABASE BookTransferHouse
+MODIFY FILE
+(NAME = 'BookTransferHouse', NEWNAME = 'BookTransferHouse_DataFile1')
+GO
+
+-- Increasing a Database’s File Size andModifying Its Growth Options
+
+ALTER DATABASE BookTransferHouse
+MODIFY FILE
+(NAME='BookTransferHouse_DataFile1', SIZE=6MB, MAXSIZE=10MB)
+
+-- Adding a Filegroup to an Existing Database
+
+ALTER DATABASE BookTransferHouse
+ADD FILEGROUP FG2
+GO
+
+ALTER DATABASE BookTransferHouse
+ADD FILE
+( NAME = 'BW2',
+FILENAME = 'C:\Apress\BW2.NDF' ,
+SIZE = 1MB ,
+MAXSIZE = 50MB,
+FILEGROWTH = 5MB )
+TO FILEGROUP [FG2]
+GO
+
+-- Setting the Default Filegroup
+
+ALTER DATABASE BookTransferHouse
+MODIFY FILEGROUP FG2 DEFAULT
+
+-- Removing a Filegroup
+
+ALTER DATABASE BookTransferHouse
+ADD FILEGROUP FG3
+GO
+
+ALTER DATABASE BookTransferHouse
+ADD FILE
+( NAME = 'BW3',
+FILENAME = 'C:\Apress\BW3.NDF' ,
+SIZE = 1MB ,
+MAXSIZE = 10MB,
+FILEGROWTH = 5MB )
+TO FILEGROUP [FG3]
+GO
+
+-- Now, the file in the filegroup is removed
+ALTER DATABASE BookTransferHouse
+REMOVE FILE BW3
+GO
+
+-- Then the filegroup
+ALTER DATABASE BookTransferHouse
+REMOVE FILEGROUP FG3
+GO
+
+-- Making a Database or Filegroup Read-Only
+
+USE master
+GO
+-- Make the database read only
+ALTER DATABASE BookTransferHouse
+SET READ_ONLY
+GO
+
+-- Allow updates again
+ALTER DATABASE BookTransferHouse
+SET READ_WRITE
+GO
+
+-- Add a new filegroup
+ALTER DATABASE BookTransferHouse
+ADD FILEGROUP FG4
+GO
+
+-- Add a file to the filegroup
+ALTER DATABASE BookTransferHouse
+ADD FILE
+( NAME = 'BW4',
+FILENAME = 'C:\Apress\BW4.NDF' ,
+SIZE = 1MB ,
+MAXSIZE = 50MB,
+FILEGROWTH = 5MB )
+TO FILEGROUP [FG4]
+GO
+
+-- Make a specific filegroup read-only
+ALTER DATABASE BookTransferHouse
+MODIFY FILEGROUP FG4 READ_ONLY
+GO
+
+-- Allow updates again
+ALTER DATABASE BookTransferHouse
+MODIFY FILEGROUP FG4 READ_WRITE
+GO
+
+-- Viewing Database Space Usage
+
+USE AdventureWorks
+GO
+EXEC sp_spaceused
+
+DBCC SQLPERF ( LOGSPACE )
+
+-- Shrinking the Database or a Database File
+
+ALTER DATABASE AdventureWorks
+MODIFY FILE (NAME = AdventureWorks2008_Data , SIZE= 250MB)
+GO
+
+ALTER DATABASE AdventureWorks
+MODIFY FILE (NAME = AdventureWorks2008_Log , SIZE= 500MB)
+GO
+
+USE AdventureWorks
+GO
+EXEC sp_spaceused
+GO
+
+DBCC SHRINKDATABASE ('AdventureWorks', 10)
+
+ALTER DATABASE AdventureWorks
+MODIFY FILE (NAME = AdventureWorks2008_Log , SIZE= 150MB)
+GO
+
+USE AdventureWorks
+GO
+EXEC sp_spaceused
+GO
+
+DBCC SHRINKFILE ('AdventureWorks2008_Log', 100)
+
+
+
+
+
+

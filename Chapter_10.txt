@@ -1,0 +1,262 @@
+-----------------------------------------------------------------------
+-- Source Code: SQL Server 2008 Transact-SQL Recipes, Joseph Sack
+-----------------------------------------------------------------------
+-- Do not execute the following code in a single batch.  These samples
+-- are provided in order to follow along with specific recipes.  
+-----------------------------------------------------------------------
+
+-- Creating a Basic Stored Procedure
+
+USE AdventureWorks
+GO
+
+CREATE PROCEDURE dbo.usp_SEL_ShoppingCartDisplay
+AS
+SELECT sc.ShoppingCartID,
+sc.ShoppingCartItemID,
+sc.Quantity,
+sc.ProductID,
+p.Name ProductName,
+p.ListPrice
+FROM Sales.ShoppingCartItem sc
+INNER JOIN Production.Product p ON
+sc.ProductID = p.ProductID
+GO
+
+EXEC dbo.usp_SEL_ShoppingCartDisplay
+
+-- Creating a Parameterized Stored Procedure
+
+CREATE PROCEDURE dbo.usp_UPD_ShoppingCartItem
+(@ShoppingCartID nvarchar(50),
+@Quantity int = 1, -- defaulted to quantity of 1
+@ProductID int)
+AS
+-- If the same ShoppingCartID and ProductID is sent
+-- in the parameters, update the new quantity
+IF EXISTS(SELECT *
+FROM Sales.ShoppingCartItem
+WHERE ShoppingCartID = @ShoppingCartID AND
+BEGIN
+UPDATE Sales.ShoppingCartItem
+SET Quantity = @Quantity
+WHERE ShoppingCartID = @ShoppingCartID AND
+ProductID = @ProductID
+PRINT 'UPDATE performed. '
+END
+ELSE
+BEGIN
+-- Otherwise insert a new row
+INSERT Sales.ShoppingCartItem
+(ShoppingCartID, ProductID, Quantity)
+VALUES (@ShoppingCartID, @ProductID, @Quantity)
+PRINT 'INSERT performed. '
+END
+GO
+
+EXEC usp_UPD_ShoppingCartItem '1255', 2, 316
+
+-- Using OUTPUT Parameters
+
+CREATE PROCEDURE dbo.usp_SEL_Department
+@GroupName nvarchar(50),
+@DeptCount int OUTPUT
+AS
+SELECT Name
+FROM HumanResources.Department
+WHERE GroupName = @GroupName
+ORDER BY Name
+SELECT @DeptCount = @@ROWCOUNT
+GO
+
+DECLARE @DeptCount int
+EXEC dbo.usp_SEL_Department 'Executive General and Administration',
+@DeptCount OUTPUT
+PRINT @DeptCount
+
+-- Modifying a Stored Procedure
+
+ALTER PROCEDURE dbo.usp_SEL_Department
+@GroupName nvarchar(50)
+AS
+SELECT Name
+FROM HumanResources.Department
+WHERE GroupName = @GroupName
+ORDER BY Name
+SELECT @@ROWCOUNT DepartmentCount
+GO
+
+EXEC dbo.usp_SEL_Department 'Research and Development'
+
+-- Dropping Stored Procedures
+
+DROP PROCEDURE dbo.usp_SEL_Department
+
+-- Executing Stored Procedures Automatically at SQL Server Startup
+
+USE master
+GO
+
+CREATE TABLE dbo.SQLStartupLog
+(SQLStartupLogID int IDENTITY(1,1) NOT NULL PRIMARY KEY,
+StartupDateTime datetime NOT NULL)
+GO
+
+CREATE PROCEDURE dbo.usp_INS_TrackSQLStartups
+AS
+INSERT dbo.SQLStartupLog
+(StartupDateTime)
+VALUES (GETDATE())
+GO
+
+EXEC sp_procoption @ProcName = 'usp_INS_TrackSQLStartups',
+@OptionName = 'startup',
+@OptionValue = 'true'
+
+EXEC sp_procoption @ProcName = 'usp_INS_TrackSQLStartups',
+@OptionName = 'startup',
+@OptionValue = 'false'
+
+-- Reporting Stored ProcedureMetadata
+
+SELECT definition,
+execute_as_principal_id,
+is_recompiled,
+uses_ansi_nulls,
+uses_quoted_identifier
+FROM sys.sql_modules m
+INNER JOIN sys.objects o ON
+m.object_id = o.object_id
+WHERE o.type = 'P'
+
+-- Documenting Stored Procedures
+
+CREATE PROCEDURE dbo.usp_IMP_DWP_FactOrder
+AS
+---------------------------------------------------------
+-- Purpose: Populates the data warehouse, Called by Job
+--
+-- Maintenance Log
+--
+-- Update By Update Date Description
+-- ----------- --------- ----------------------------
+-- Joe Sack 8/15/2008 Created
+-- Joe Sack 8/16/2008 A new column was added to
+--the base table, so it was added here as well.
+... Transact-SQL code here
+
+-- Encrypting a Stored Procedure
+
+CREATE PROCEDURE dbo.usp_SEL_EmployeePayHistory
+WITH ENCRYPTION
+AS
+SELECT EmployeeID, RateChangeDate, Rate, PayFrequency, ModifiedDate
+FROM HumanResources.EmployeePayHistory
+GO
+
+-- View the procedure's text
+EXEC sp_helptext usp_SEL_EmployeePayHistory
+
+-- Using EXECUTE AS to Specify the Procedure’s Security Context
+
+USE AdventureWorks
+GO
+
+CREATE PROCEDURE dbo.usp_DEL_ALLEmployeeSalary
+AS
+-- Deletes all rows prior to the data feed
+DELETE dbo.EmployeeSalary
+GO
+
+CREATE TABLE dbo.EmployeeSalary
+(EmployeeID int NOT NULL PRIMARY KEY CLUSTERED,
+SalaryAMT money NOT NULL)
+GO
+
+INSERT dbo.EmployeeSalary (EmployeeID, SalaryAMT)
+VALUES (1,45000.00), (343, 100000.00),(93, 3234993.00)
+
+USE master
+GO
+
+CREATE LOGIN BrianG WITH PASSWORD = '1301C636F9D'
+
+USE AdventureWorks
+GO
+CREATE USER BrianG
+GO
+GRANT EXEC ON usp_DEL_ALLEmployeeSalary to BrianG
+
+EXECUTE dbo.usp_DEL_ALLEmployeeSalary
+
+ALTER PROCEDURE dbo.usp_DEL_ALLEmployeeSalary
+AS
+-- Deletes all rows prior to the data feed
+TRUNCATE TABLE dbo.EmployeeSalary
+GO
+
+ALTER PROCEDURE dbo.usp_DEL_ALLEmployeeSalary
+WITH EXECUTE AS OWNER
+AS
+-- Deletes all rows prior to the data feed
+TRUNCATE TABLE dbo.EmployeeSalary
+GO
+
+CREATE PROCEDURE dbo.usp_SEL_CountRowsFromAnyTable
+@SchemaAndTable nvarchar(255)
+AS
+EXEC ('SELECT COUNT(*) FROM ' + @SchemaAndTable)
+GO
+
+EXEC dbo.usp_SEL_CountRowsFromAnyTable 'HumanResources.Department'
+
+USE master
+GO
+
+CREATE LOGIN SteveP WITH PASSWORD = '533B295A-D1F0'
+USE AdventureWorks
+GO
+
+CREATE USER SteveP
+GRANT SELECT ON OBJECT::HumanResources.Employee TO SteveP
+GO
+
+ALTER PROCEDURE dbo.usp_SEL_CountRowsFromAnyTable
+@SchemaAndTable nvarchar(255)
+WITH EXECUTE AS 'SteveP'
+AS
+-- Will work for any tables that SteveP can SELECT from
+EXEC ('SELECT COUNT(*) FROM ' + @SchemaAndTable)
+GO
+
+-- RECOMPILE(ing) a Stored Procedure Each Time It Is Executed
+
+CREATE PROCEDURE dbo.usp_SEL_BackupMBsPerSecond
+(@BackupStartDate datetime,
+@BackupFinishDate datetime)
+WITH RECOMPILE -- Plan will never be saved
+AS
+-- Procedure measure db backup throughput
+SELECT (SUM(backup_size)/1024)/1024 as 'MB',
+DATEDIFF ( ss , MIN(backup_start_date),
+MAX(backup_finish_date)) as 'seconds',
+((SUM(backup_size)/1024)/1024 )/
+DATEDIFF ( ss , MIN(backup_start_date) ,
+MAX(backup_finish_date)) as 'MB per second'
+FROM msdb.dbo.backupset
+WHERE backup_start_date >= @BackupStartDate AND
+backup_finish_date < @BackupFinishDate AND
+type = 'd'
+GO
+
+-- Flushing the Procedure Cache
+
+SELECT COUNT(*) 'CachedPlansBefore'
+FROM sys.dm_exec_cached_plans
+
+DBCC FREEPROCCACHE
+
+SELECT COUNT(*) 'CachedPlansAfter'
+FROM sys.dm_exec_cached_plans
+
+

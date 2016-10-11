@@ -1,0 +1,50 @@
+-----------------------------------------------------------------------
+-- Source Code: SQL Server 2008 Transact-SQL Recipes, Joseph Sack
+-----------------------------------------------------------------------
+-- Do not execute the following code in a single batch.  These samples
+-- are provided in order to follow along with specific recipes.  
+-----------------------------------------------------------------------
+
+-- Viewing SQL Server Configurations
+
+-- Display basic options
+EXEC sp_configure
+GO
+
+-- Display advanced options
+EXEC sp_configure 'show advanced option', 1
+RECONFIGURE
+GO
+EXEC sp_configure
+GO
+
+SELECT name, value, minimum, maximum, value_in_use, is_dynamic, is_advanced
+FROM sys.configurations
+ORDER BY name
+
+-- Changing SQL Server Configurations
+
+SELECT name, value_in_use
+FROM sys.configurations
+WHERE name IN ('max degree of parallelism')
+
+EXEC sp_configure 'max degree of parallelism', 1
+RECONFIGURE
+GO
+
+SELECT name, value_in_use
+FROM sys.configurations
+WHERE name IN ('max degree of parallelism')
+
+SELECT name, value_in_use
+FROM sys.configurations
+WHERE name IN ('max server memory (MB)')
+
+EXEC sp_configure 'max server memory', 2500
+RECONFIGURE
+GO
+
+SELECT name, value_in_use
+FROM sys.configurations
+WHERE name IN ('max server memory (MB)')
+

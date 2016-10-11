@@ -1,0 +1,490 @@
+-----------------------------------------------------------------------
+-- Source Code: SQL Server 2008 Transact-SQL Recipes, Joseph Sack
+-----------------------------------------------------------------------
+-- Do not execute the following code in a single batch.  These samples
+-- are provided in order to follow along with specific recipes.  
+-----------------------------------------------------------------------
+
+-- Creating Scalar User-Defined Functions
+
+-- Create a function to check for any suspicious behaviors
+-- from the application
+CREATE FUNCTION dbo.udf_CheckForSQLInjection
+(@TSQLString varchar(max))
+RETURNS BIT
+AS
+BEGIN
+DECLARE @IsSuspect bit
+-- UDF assumes string will be left padded with a single space
+SET @TSQLString = ' ' + @TSQLString
+IF (PATINDEX('% xp_%' , @TSQLString ) <> 0 OR
+PATINDEX('% sp_%' , @TSQLString ) <> 0 OR
+PATINDEX('% DROP %' , @TSQLString ) <> 0 OR
+PATINDEX('% GO %' , @TSQLString ) <> 0 OR
+PATINDEX('% INSERT %' , @TSQLString ) <> 0 OR
+PATINDEX('% UPDATE %' , @TSQLString ) <> 0 OR
+PATINDEX('% DBCC %' , @TSQLString ) <> 0 OR
+PATINDEX('% SHUTDOWN %' , @TSQLString )<> 0 OR
+PATINDEX('% ALTER %' , @TSQLString )<> 0 OR
+PATINDEX('% CREATE %' , @TSQLString ) <> 0OR
+PATINDEX('%;%' , @TSQLString )<> 0 OR
+PATINDEX('% EXECUTE %' , @TSQLString )<> 0 OR
+PATINDEX('% BREAK %' , @TSQLString )<> 0 OR
+PATINDEX('% BEGIN %' , @TSQLString )<> 0 OR
+PATINDEX('% CHECKPOINT %' , @TSQLString )<> 0 OR
+PATINDEX('% BREAK %' , @TSQLString )<> 0 OR
+PATINDEX('% COMMIT %' , @TSQLString )<> 0 OR
+PATINDEX('% TRANSACTION %' , @TSQLString )<> 0 OR
+PATINDEX('% CURSOR %' , @TSQLString )<> 0 OR
+PATINDEX('% GRANT %' , @TSQLString )<> 0 OR
+PATINDEX('% DENY %' , @TSQLString )<> 0 OR
+PATINDEX('% ESCAPE %' , @TSQLString )<> 0 OR
+PATINDEX('% WHILE %' , @TSQLString )<> 0 OR
+PATINDEX('% OPENDATASOURCE %' , @TSQLString )<> 0 OR
+PATINDEX('% OPENQUERY %' , @TSQLString )<> 0 OR
+PATINDEX('% OPENROWSET %' , @TSQLString )<> 0 OR
+PATINDEX('% EXEC %' , @TSQLString )<> 0)
+BEGIN
+SELECT @IsSuspect = 1
+END
+ELSE
+BEGIN
+SELECT @IsSuspect = 0
+END
+RETURN (@IsSuspect)
+END
+GO
+
+SELECT dbo.udf_CheckForSQLInjection
+('SELECT * FROM HumanResources.Department')
+
+SELECT dbo.udf_CheckForSQLInjection
+(';SHUTDOWN')
+
+SELECT dbo.udf_CheckForSQLInjection
+('DROP HumanResources.Department')
+
+CREATE FUNCTION dbo.udf_ProperCase(@UnCased varchar(max))
+RETURNS varchar(max)
+AS
+BEGIN
+SET @UnCased = LOWER(@UnCased)
+DECLARE @C int
+SET @C = ASCII('a')
+WHILE @C <= ASCII('z')
+BEGIN
+SET @UnCased = REPLACE( @UnCased, ' ' + CHAR(@C), ' ' + CHAR(@C-32))
+SET @C = @C + 1
+END
+SET @UnCased = CHAR(ASCII(LEFT(@UnCased, 1))-32) + RIGHT(@UnCased,
+LEN(@UnCased)-1)
+RETURN @UnCased
+END
+GO
+
+SELECT dbo.udf_ProperCase(DocumentSummary)
+FROM Production.Document
+WHERE FileName = 'Installing Replacement Pedals.doc'
+
+-- Creating Inline User-Defined Functions
+
+CREATE FUNCTION dbo.udf_ReturnAddress
+( @BusinessEntityID int)
+RETURNS TABLE
+AS
+RETURN (
+SELECT t.Name AddressTypeNM,
+a.AddressLine1,
+a.City,
+a.StateProvinceID,
+a.PostalCode
+FROM Person.Address a
+INNER JOIN Person.BusinessEntityAddress e ON
+a.AddressID = e.AddressID
+INNER JOIN Person.AddressType t ON
+e.AddressTypeID = t.AddressTypeID
+WHERE e.BusinessEntityID = @BusinessEntityID )
+GO
+
+SELECT AddressTypeNM, AddressLine1, City, PostalCode
+FROM dbo.udf_ReturnAddress(332)
+
+-- Creating Multi-Statement User-Defined Functions
+
+-- Creates a UDF that returns a string array as a table result set
+CREATE FUNCTION dbo.udf_ParseArray
+( @StringArray varchar(max),
+@Delimiter char(1) )
+RETURNS @StringArrayTable TABLE (Val varchar(50))
+AS
+BEGIN
+DECLARE @Delimiter_position int
+IF RIGHT(@StringArray,1) != @Delimiter
+SET @StringArray = @StringArray + @Delimiter
+WHILE CHARINDEX(@Delimiter, @StringArray) <> 0
+BEGIN
+SELECT @Delimiter_position =
+CHARINDEX(@Delimiter, @StringArray)
+INSERT @StringArrayTable
+VALUES (left(@StringArray, @Delimiter_position - 1))
+SELECT @StringArray = STUFF(@StringArray, 1,
+@Delimiter_position, '')
+END
+RETURN
+END
+GO
+
+SELECT Val
+FROM dbo.udf_ParseArray('A,B,C,D,E,F,G', ',')
+
+-- Modifying User-Defined Functions
+
+ALTER FUNCTION dbo.udf_ParseArray
+( @StringArray varchar(max),
+@Delimiter char(1) ,
+@MinRowSelect int,
+@MaxRowSelect int)
+RETURNS @StringArrayTable TABLE (RowNum int IDENTITY(1,1), Val
+varchar(50))
+AS
+BEGIN
+DECLARE @Delimiter_position int
+IF RIGHT(@StringArray,1) != @Delimiter
+SET @StringArray = @StringArray + @Delimiter
+WHILE CHARINDEX(@Delimiter, @StringArray) <> 0
+BEGIN
+SELECT @Delimiter_position =
+CHARINDEX(@Delimiter, @StringArray)
+INSERT @StringArrayTable
+VALUES (left(@StringArray, @Delimiter_position - 1))
+SELECT @StringArray = stuff(@StringArray, 1,
+@Delimiter_position, '')
+END
+DELETE @StringArrayTable
+WHERE RowNum < @MinRowSelect OR
+RowNum > @MaxRowSelect
+RETURN
+END
+GO
+
+-- Now use it to break apart a comma delimited array
+SELECT RowNum, Val
+FROM dbo.udf_ParseArray('A,B,C,D,E,F,G', ',', 3, 5)
+
+-- Viewing UDF Metadata
+
+SELECT name, type_desc, definition
+FROM sys.sql_modules s
+INNER JOIN sys.objects o
+ON s.object_id = o.object_id
+WHERE TYPE IN ('IF', -- Inline Table UDF
+'TF', -- Multistatement Table UDF
+'FN') -- Scalar UDF
+
+-- Dropping User-Defined Functions
+
+DROP FUNCTION dbo.udf_ParseArray
+
+-- Maintaining Reusable Code
+
+CREATE FUNCTION dbo.udf_GET_AssignedEquipment
+(@Title nvarchar(50), @HireDate datetime, @SalariedFlag bit)
+RETURNS nvarchar(50)
+AS
+BEGIN
+DECLARE @EquipmentType nvarchar(50)
+IF @Title LIKE 'Chief%' OR
+@Title LIKE 'Vice%' OR
+@Title = 'Database Administrator'
+BEGIN
+SET @EquipmentType = 'PC Build A'
+END
+IF @EquipmentType IS NULL AND @SalariedFlag = 1
+BEGIN
+SET @EquipmentType = 'PC Build B'
+END
+IF @EquipmentType IS NULL AND @HireDate < '1/1/2002'
+BEGIN
+SET @EquipmentType = 'PC Build C'
+END
+IF @EquipmentType IS NULL
+BEGIN
+SET @EquipmentType = 'PC Build D'
+END
+RETURN @EquipmentType
+END
+GO
+
+SELECT dbo.udf_GET_AssignedEquipment
+(JobTitle, HireDate, SalariedFlag) PC_Build,
+COUNT(*) Employee_Count
+FROM HumanResources.Employee
+GROUP BY dbo.udf_GET_AssignedEquipment
+(JobTitle, HireDate, SalariedFlag)
+ORDER BY dbo.udf_GET_AssignedEquipment
+(JobTitle, HireDate, SalariedFlag)
+
+SELECT JobTitle,
+BusinessEntityID,
+dbo.udf_GET_AssignedEquipment
+(JobTitle, HireDate, SalariedFlag) PC_Build
+FROM HumanResources.Employee
+WHERE dbo.udf_GET_AssignedEquipment
+(JobTitle, HireDate, SalariedFlag) IN
+('PC Build A', 'PC Build B')
+
+-- Cross-Referencing Natural KeyValues
+
+CREATE TABLE dbo.DimProductSalesperson
+(DimProductSalespersonID int IDENTITY(1,1) NOT NULL PRIMARY KEY,
+ProductCD char(10) NOT NULL,
+CompanyNBR int NOT NULL,
+SalespersonNBR int NOT NULL
+)
+GO
+
+CREATE TABLE dbo.Staging_PRODSLSP
+( ProductCD char(10) NOT NULL,
+CompanyNBR int NOT NULL,
+SalespersonNBR int NOT NULL
+)
+GO
+
+INSERT dbo.Staging_PRODSLSP
+(ProductCD, CompanyNBR, SalespersonNBR)
+VALUES ('2391A23904', 1, 24)
+
+INSERT dbo.Staging_PRODSLSP
+(ProductCD, CompanyNBR, SalespersonNBR)
+VALUES ('X129483203', 1, 34)
+
+INSERT dbo.DimProductSalesperson
+(ProductCD, CompanyNBR, SalespersonNBR)
+SELECT s.ProductCD, s.CompanyNBR, s.SalespersonNBR
+FROM dbo.Staging_PRODSLSP s
+LEFT OUTER JOIN dbo.DimProductSalesperson d ON
+s.ProductCD = d.ProductCD AND
+s.CompanyNBR = d.CompanyNBR AND
+s.SalespersonNBR = d.SalespersonNBR
+WHERE d.DimProductSalespersonID IS NULL
+
+CREATE FUNCTION dbo.udf_GET_Check_NK_DimProductSalesperson
+(@ProductCD char(10), @CompanyNBR int, @SalespersonNBR int )
+RETURNS bit
+AS
+BEGIN
+DECLARE @Exists bit
+IF EXISTS (SELECT DimProductSalespersonID
+FROM dbo.DimProductSalesperson
+WHERE @ProductCD = @ProductCD AND
+@CompanyNBR = @CompanyNBR AND
+@SalespersonNBR = @SalespersonNBR)
+BEGIN
+SET @Exists = 1
+END
+ELSE
+BEGIN
+SET @Exists = 0
+END
+RETURN @Exists
+END
+GO
+
+INSERT dbo.DimProductSalesperson
+(ProductCD, CompanyNBR, SalespersonNBR)
+SELECT ProductCD, CompanyNBR, SalespersonNBR
+FROM dbo.Staging_PRODSLSP
+WHERE dbo.udf_GET_Check_NK_DimProductSalesperson
+(ProductCD, CompanyNBR, SalespersonNBR) = 0
+
+-- Replacing Views with Multi-Statement UDFs
+
+CREATE FUNCTION dbo.udf_SEL_SalesQuota
+( @BusinessEntityID int,
+@ShowHistory bit )
+RETURNS @SalesQuota TABLE
+(BusinessEntityID int,
+QuotaDate datetime,
+SalesQuota money)
+AS
+BEGIN
+INSERT @SalesQuota
+(BusinessEntityID, QuotaDate, SalesQuota)
+SELECT BusinessEntityID, ModifiedDate, SalesQuota
+FROM Sales.SalesPerson
+WHERE BusinessEntityID = @BusinessEntityID
+IF @ShowHistory = 1
+BEGIN
+INSERT @SalesQuota
+(BusinessEntityID, QuotaDate, SalesQuota)
+SELECT BusinessEntityID, QuotaDate, SalesQuota
+FROM Sales.SalesPersonQuotaHistory
+WHERE BusinessEntityID = @BusinessEntityID
+END
+RETURN
+END
+GO
+
+SELECT BusinessEntityID, QuotaDate, SalesQuota
+FROM dbo.udf_SEL_SalesQuota (275,0)
+
+SELECT BusinessEntityID, QuotaDate, SalesQuota
+FROM dbo.udf_SEL_SalesQuota (275,1)
+
+-- Creating and Using User-Defined Types
+
+-- In this example, we assume the company's Account number will
+-- be used in multiple tables, and that it will always have a fixed
+-- 14 character length and will never allow NULL values
+CREATE TYPE dbo.AccountNBR
+FROM char(14) NOT NULL
+GO
+
+CREATE TABLE dbo.InventoryAccount
+(InventoryAccountID int NOT NULL,
+InventoryID int NOT NULL,
+InventoryAccountNBR AccountNBR)
+GO
+
+CREATE TABLE dbo.CustomerAccount
+(CustomerAccountID int NOT NULL,
+CustomerID int NOT NULL,
+CustomerAccountNBR AccountNBR)
+GO
+
+CREATE PROCEDURE dbo.usp_SEL_CustomerAccount
+@CustomerAccountNBR AccountNBR
+AS
+SELECT CustomerAccountID, CustomerID, CustomerAccountNBR
+FROM dbo.CustomerAccount
+WHERE CustomerAccountNBR = CustomerAccountNBR
+GO
+
+DECLARE @CustomerAccountNBR AccountNBR
+SET @CustomerAccountNBR = '1294839482'
+
+EXEC dbo.usp_SEL_CustomerAccount @CustomerAccountNBR
+
+EXEC sp_help 'dbo.AccountNBR'
+
+-- Identifying Columns and Parameters with Dependencies on User-Defined Types
+
+SELECT OBJECT_NAME(c.object_id) Table_Name, c.name Column_Name
+FROM sys.columns c
+INNER JOIN sys.types t ON
+c.user_type_id = t.user_type_id
+WHERE t.name = 'AccountNBR
+
+-- Now see what parameters reference the AccountNBR data type
+SELECT OBJECT_NAME(p.object_id) Table_Name, p.name Parameter_Name
+FROM sys.parameters p
+INNER JOIN sys.types t ON
+p.user_type_id = t.user_type_id
+WHERE t.name = 'AccountNBR'
+
+-- Dropping User-Defined Types
+
+ALTER TABLE dbo.InventoryAccount
+ALTER COLUMN InventoryAccountNBR char(14)
+GO
+
+ALTER TABLE dbo.CustomerAccount
+ALTER COLUMN CustomerAccountNBR char(14)
+GO
+
+ALTER PROCEDURE dbo.usp_SEL_CustomerAccount
+@CustomerAccountNBR char(14)
+AS
+SELECT CustomerAccountID, CustomerID, CustomerAccountNBR
+FROM dbo.CustomerAccount
+WHERE CustomerAccountNBR = CustomerAccountNBR
+GO
+
+DROP TYPE dbo.AccountNBR
+
+-- Passing Table-Valued Parameters
+
+CREATE PROCEDURE dbo.usp_INS_Department_Oldstyle
+@Name_1 nvarchar(50),
+@GroupName_1 nvarchar(50),
+@Name_2 nvarchar(50),
+@GroupName_2 nvarchar(50),
+@Name_3 nvarchar(50),
+@GroupName_3 nvarchar(50),
+@Name_4 nvarchar(50),
+@GroupName_4 nvarchar(50),
+@Name_5 nvarchar(50),
+@GroupName_5 nvarchar(50)
+AS
+
+INSERT HumanResources.Department
+(Name, GroupName)
+VALUES (@Name_1, @GroupName_1)
+
+INSERT HumanResources.Department
+(Name, GroupName)
+VALUES (@Name_2, @GroupName_2)
+INSERT HumanResources.Department
+(Name, GroupName)
+VALUES (@Name_3, @GroupName_3)
+INSERT HumanResources.Department
+(Name, GroupName)
+VALUES (@Name_4, @GroupName_4)
+INSERT HumanResources.Department
+(Name, GroupName)
+VALUES (@Name_5, @GroupName_5)
+GO
+
+CREATE PROCEDURE dbo.usp_INS_Department_Oldstyle_V2
+@Name nvarchar(50),
+@GroupName nvarchar(50)
+AS
+INSERT HumanResources.Department
+(Name, GroupName)
+VALUES (@Name, @GroupName)
+GO
+
+CREATE TYPE Department_TT AS TABLE
+(Name nvarchar(50),
+GroupName nvarchar(50))
+GO
+
+CREATE PROCEDURE dbo.usp_INS_Department_NewStyle
+@DepartmentTable as Department_TT READONLY
+AS
+INSERT HumanResources.Department
+(Name, GroupName)
+
+SELECT Name, GroupName
+FROM @DepartmentTable
+GO
+
+-- I can declare our new type for use within a T-SQL batch
+DECLARE @StagingDepartmentTable as Department_TT
+
+-- Insert multiple rows into this table-type variable
+INSERT @StagingDepartmentTable
+(Name, GroupName)
+VALUES ('Archivists', 'Accounting')
+
+INSERT @StagingDepartmentTable
+(Name, GroupName)
+VALUES ('Public Media', 'Legal')
+
+INSERT @StagingDepartmentTable
+(Name, GroupName)
+VALUES ('Internal Admin', 'Office Administration')
+
+-- Pass this table-type variable to the procedure in a single call
+EXEC dbo.usp_INS_Department_NewStyle @StagingDepartmentTable
+
+
+
+
+
+
+
+
+
+
+

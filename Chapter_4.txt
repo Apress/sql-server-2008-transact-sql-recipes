@@ -1,0 +1,668 @@
+-----------------------------------------------------------------------
+-- Source Code: SQL Server 2008 Transact-SQL Recipes, Joseph Sack
+-----------------------------------------------------------------------
+-- Do not execute the following code in a single batch.  These samples
+-- are provided in order to follow along with specific recipes.  
+-----------------------------------------------------------------------
+
+-- Creating a Table
+
+USE AdventureWorks
+GO
+CREATE TABLE Person.EducationType
+(EducationTypeID int NOT NULL,
+EducationTypeNM varchar(40) NOT NULL)
+
+-- Adding a Column to an Existing Table
+
+ALTER TABLE HumanResources.Employee
+ADD Latest_EducationTypeID int NULL
+
+-- Changing an Existing Column Definition
+
+-- Make it Nullable
+ALTER TABLE HumanResources.Employee
+ALTER COLUMN Gender nchar(1) NULL
+
+-- Expanded nvarchar(256) to nvarchar(300)
+ALTER TABLE HumanResources.Employee
+ALTER COLUMN LoginID nvarchar(300) NOT NULL
+
+-- Creating a Computed Column
+
+ALTER TABLE Production.TransactionHistory
+ADD CostPerUnit AS (ActualCost/Quantity)
+
+SELECT TOP 1 CostPerUnit, Quantity, ActualCost
+FROM Production.TransactionHistory
+WHERE Quantity > 10
+ORDER BY ActualCost DESC
+
+CREATE TABLE HumanResources.CompanyStatistic
+(CompanyID int NOT NULL,
+StockTicker char(4) NOT NULL,
+SharesOutstanding int NOT NULL,
+Shareholders int NOT NULL,
+AvgSharesPerShareholder AS (SharesOutStanding/Shareholders) PERSISTED)
+
+-- Reducing Storage for Null Columns
+
+CREATE TABLE dbo.WebsiteProduct
+(WebsiteProductID int NOT NULL PRIMARY KEY IDENTITY(1,1),
+ProductNM varchar(255) NOT NULL,
+PublisherNM varchar(255) SPARSE NULL,
+ArtistNM varchar(150) SPARSE NULL,
+ISBNNBR varchar(30) SPARSE NULL,
+DiscsNBR int SPARSE NULL,
+MusicLabelNM varchar(255) SPARSE NULL)
+
+INSERT dbo.WebsiteProduct
+(ProductNM, PublisherNM, ISBNNBR)
+VALUES
+('SQL Server 2008 Transact-SQL Recipes',
+'Apress',
+'1590599802')
+INSERT dbo.WebsiteProduct
+(ProductNM, ArtistNM, DiscsNBR, MusicLabelNM)
+VALUES
+('Etiquette',
+'Casiotone for the Painfully Alone',
+1,
+'Tomlab')
+
+SELECT ProductNM, PublisherNM,ISBNNBR
+FROM dbo.WebsiteProduct
+WHERE ISBNNBR IS NOT NULL
+
+DROP TABLE dbo.WebsiteProduct
+
+CREATE TABLE dbo.WebsiteProduct
+(WebsiteProductID int NOT NULL PRIMARY KEY IDENTITY(1,1),
+ProductNM varchar(255) NOT NULL,
+PublisherNM varchar(255) SPARSE NULL,
+ArtistNM varchar(150) SPARSE NULL,
+ISBNNBR varchar(30) SPARSE NULL,
+DiscsNBR int SPARSE NULL,
+MusicLabelNM varchar(255) SPARSE NULL,
+ProductAttributeCS xml COLUMN_SET FOR ALL_SPARSE_COLUMNS)
+
+-- Re-insert data
+INSERT dbo.WebsiteProduct
+(ProductNM, PublisherNM, ISBNNBR)
+VALUES
+('SQL Server 2008 Transact-SQL Recipes',
+'Apress',
+'1590599802')
+
+INSERT dbo.WebsiteProduct
+(ProductNM, ArtistNM, DiscsNBR, MusicLabelNM)
+VALUES
+('Etiquette',
+'Casiotone for the Painfully Alone',
+1,
+'Tomlab')
+
+SELECT ProductNM, ProductAttributeCS
+FROM dbo.WebsiteProduct
+WHERE ProductNM IS NOT NULL
+
+INSERT dbo.WebsiteProduct
+(ProductNM,ProductAttributeCS)
+VALUES
+('Roots & Echoes',
+'<ArtistNM>The Coral</ArtistNM>
+<DiscsNBR>1</DiscsNBR>
+<MusicLabelNM>Deltasonic</ MusicLabelNM>')
+
+SELECT *
+FROM dbo.WebsiteProduct
+
+SELECT ProductNM, ArtistNM
+FROM dbo.WebsiteProduct
+WHERE ArtistNM IS NOT NULL
+
+-- Dropping a Table Column
+
+ALTER TABLE HumanResources.Employee
+DROP COLUMN Latest_EducationTypeID
+
+-- Reporting Table Information
+
+EXEC sp_help 'HumanResources.Employee'
+
+
+-- Dropping a Table
+
+DROP TABLE Person.EducationType
+
+-- Viewing CollationMetadata
+
+SELECT SERVERPROPERTY('Collation')
+
+SELECT DATABASEPROPERTYEX ( 'AdventureWorks' , 'Collation' )
+
+SELECT description
+FROM sys.fn_helpcollations()
+WHERE name = 'SQL_Latin1_General_CP1_CI_AS'
+
+-- Designating a Column’s Collation
+
+ALTER TABLE Production.Product
+ADD IcelandicProductName nvarchar(50) COLLATE Icelandic_CI_AI,
+UkrainianProductName nvarchar(50) COLLATE Ukrainian_CI_AS
+
+-- Creating a Table with a Primary Key
+
+CREATE TABLE Person.CreditRating(
+CreditRatingID int NOT NULL PRIMARY KEY,
+CreditRatingNM varchar(40) NOT NULL)
+GO
+
+CREATE TABLE Person.EmployeeEducationType (
+EmployeeID int NOT NULL,
+EducationTypeID int NOT NULL,
+CONSTRAINT PK_EmployeeEducationType
+PRIMARY KEY (EmployeeID, EducationTypeID))
+
+-- Adding a Primary Key Constraint to an Existing Table
+
+CREATE TABLE Person.EducationType
+(EducationTypeID int NOT NULL,
+EducationTypeNM varchar(40) NOT NULL)
+
+ALTER TABLE Person.EducationType
+ADD CONSTRAINT PK_EducationType
+PRIMARY KEY (EducationTypeID)
+
+-- Creating a Table with a Foreign Key Reference
+
+CREATE TABLE Person.EmployeeCreditRating(
+EmployeeCreditRating int NOT NULL PRIMARY KEY,
+BusinessEntityID int NOT NULL,
+CreditRatingID int NOT NULL,
+CONSTRAINT FK_EmployeeCreditRating_Employee
+FOREIGN KEY(BusinessEntityID)
+REFERENCES HumanResources.Employee(BusinessEntityID),
+CONSTRAINT FK_EmployeeCreditRating_CreditRating
+FOREIGN KEY(CreditRatingID)
+REFERENCES Person.CreditRating(CreditRatingID)
+)
+
+-- Adding a Foreign Key to an Existing Table
+
+CREATE TABLE Person.EmergencyContact (
+EmergencyContactID int NOT NULL PRIMARY KEY,
+BusinessEntityID int NOT NULL,
+ContactFirstNM varchar(50) NOT NULL,
+ContactLastNM varchar(50) NOT NULL,
+ContactPhoneNBR varchar(25) NOT NULL)
+
+ALTER TABLE Person.EmergencyContact
+ADD CONSTRAINT FK_EmergencyContact_Employee
+FOREIGN KEY (BusinessEntityID)
+REFERENCES HumanResources.Employee (BusinessEntityID)
+
+-- Creating Recursive Foreign Key References
+
+CREATE TABLE HumanResources.Company
+(CompanyID int NOT NULL PRIMARY KEY,
+ParentCompanyID int NULL,
+CompanyName varchar(25) NOT NULL,
+CONSTRAINT FK_Company_Company
+FOREIGN KEY (ParentCompanyID)
+REFERENCES HumanResources.Company(CompanyID))
+
+INSERT HumanResources.Company
+(CompanyID, CompanyName)
+VALUES(1, 'MegaCorp')
+
+INSERT HumanResources.Company
+(CompanyID, ParentCompanyID, CompanyName)
+VALUES(2, 1, 'Medi-Corp')
+
+INSERT HumanResources.Company
+(CompanyID, ParentCompanyID, CompanyName)
+VALUES(3, 8, 'Tiny-Corp')
+
+-- Allowing Cascading Changes in Foreign Keys
+
+-- Drop old version of table
+
+DROP TABLE Person.EmployeeEducationType
+
+CREATE TABLE Person.EmployeeEducationType(
+EmployeeEducationTypeID int NOT NULL PRIMARY KEY,
+BusinessEntityID int NOT NULL,
+EducationTypeID int NULL,
+CONSTRAINT FK_EmployeeEducationType_Employee
+FOREIGN KEY(BusinessEntityID)
+REFERENCES HumanResources.Employee(BusinessEntityID)
+ON DELETE CASCADE,
+CONSTRAINT FK_EmployeeEducationType_EducationType
+FOREIGN KEY(EducationTypeID)
+REFERENCES Person.EducationType(EducationTypeID)
+ON UPDATE SET NULL)
+
+-- Using the IDENTITY Property During Table Creation
+
+CREATE TABLE HumanResources.CompanyAuditHistory
+(CompanyAuditHistory int NOT NULL IDENTITY(1,1) PRIMARY KEY,
+CompanyID int NOT NULL ,
+AuditReasonDESC varchar(50) NOT NULL,
+AuditDT datetime NOT NULL DEFAULT GETDATE())
+
+INSERT HumanResources.CompanyAuditHistory
+(CompanyID, AuditReasonDESC, AuditDT)
+VALUES
+(1, 'Bad 1099 numbers.', '6/1/2009')
+
+INSERT HumanResources.CompanyAuditHistory
+(CompanyID, AuditReasonDESC, AuditDT)
+VALUES
+(1, 'Missing financial statement.', '7/1/2009')
+
+SELECT CompanyAuditHistory, AuditReasonDESC
+FROM HumanResources.CompanyAuditHistory
+
+-- Using DBCC CHECKIDENT to View and Correct IDENTITY Seed Values
+
+DBCC CHECKIDENT('HumanResources.CompanyAuditHistory', NORESEED)
+
+DBCC CHECKIDENT ('HumanResources.CompanyAuditHistory', RESEED, 50)
+
+-- Using the ROWGUIDCOL Property
+
+CREATE TABLE HumanResources.BuildingAccess
+( BuildingEntryExitID uniqueidentifier ROWGUIDCOL DEFAULT NEWID(),
+EmployeeID int NOT NULL,
+AccessTime datetime NOT NULL,
+DoorID int NOT NULL)
+
+INSERT HumanResources.BuildingAccess
+(EmployeeID, AccessTime, DoorID)
+VALUES (32, GETDATE(), 2)
+
+SELECT ROWGUIDCOL,
+EmployeeID,
+AccessTime,
+DoorID
+FROM HumanResources.BuildingAccess
+
+-- Creating a Unique Constraint
+
+CREATE TABLE HumanResources.EmployeeAnnualReview(
+EmployeeAnnualReviewID int NOT NULL PRIMARY KEY,
+EmployeeID int NOT NULL,
+AnnualReviewSummaryDESC varchar(900) NOT NULL UNIQUE)
+
+-- Drop the old version of the table
+DROP TABLE Person.EmergencyContact
+
+CREATE TABLE Person.EmergencyContact (
+EmergencyContactID int NOT NULL PRIMARY KEY,
+EmployeeID int NOT NULL,
+ContactFirstNM varchar(50) NOT NULL,
+ContactLastNM varchar(50) NOT NULL,
+ContactPhoneNBR varchar(25) NOT NULL,
+CONSTRAINT UNQ_EmergencyContact_FirstNM_LastNM_PhoneNBR
+UNIQUE (ContactFirstNM, ContactLastNM, ContactPhoneNBR))
+
+-- Adding a UNIQUE Constraint to an Existing Table
+
+ALTER TABLE Production.Culture
+ADD CONSTRAINT UNQ_Culture_Name
+UNIQUE (Name)
+
+-- Using CHECK Constraints
+
+-- Drop old version of the table
+DROP TABLE Person.EmployeeEducationType
+
+CREATE TABLE Person.EmployeeEducationType(
+EmployeeEducationTypeID int NOT NULL PRIMARY KEY,
+EmployeeID int NOT NULL,
+EducationTypeID int NULL,
+GPA numeric(4,3) NOT NULL CHECK (GPA > 2.5 AND GPA <=4.0))
+
+-- Drop old version of the table
+DROP TABLE Person.EmployeeEducationType
+
+CREATE TABLE Person.EmployeeEducationType(
+EmployeeEducationTypeID int NOT NULL PRIMARY KEY,
+EmployeeID int NOT NULL,
+EducationTypeID int NULL,
+GPA numeric(4,3) NOT NULL,
+CONSTRAINT CK_EmployeeEducationType
+CHECK (EducationTypeID > 1 AND GPA > 2.5 AND GPA <=4.0))
+
+-- Adding a CHECK Constraint to an Existing Table
+
+ALTER TABLE Person.ContactType WITH NOCHECK
+ADD CONSTRAINT CK_ContactType
+CHECK (Name NOT LIKE '%assistant%')
+
+-- Disabling and Enabling a Constraint
+
+INSERT Sales.PersonCreditCard
+(BusinessEntityID, CreditCardID)
+VALUES (14425, 924533)
+
+ALTER TABLE Sales.PersonCreditCard
+NOCHECK CONSTRAINT FK_PersonCreditCard_CreditCard_CreditCardID
+
+INSERT Sales.PersonCreditCard
+(BusinessEntityID, CreditCardID)
+VALUES (14425, 924533)
+
+DELETE Sales.PersonCreditCard
+WHERE BusinessEntityID = 14425 AND
+CreditCardID = 924533
+
+ALTER TABLE Sales.PersonCreditCard
+CHECK CONSTRAINT FK_PersonCreditCard_CreditCard_CreditCardID
+
+-- disable checking on all constraints
+ALTER TABLE Sales.PersonCreditCard
+NOCHECK CONSTRAINT ALL
+
+-- enable checking on all constraints
+ALTER TABLE Sales.PersonCreditCard
+CHECK CONSTRAINT ALL
+
+-- Using a DEFAULT Constraint During Table Creation
+
+-- Drop old table
+DROP TABLE Person.EmployeeEducationType
+
+CREATE TABLE Person.EmployeeEducationType(
+EmployeeEducationTypeID int NOT NULL PRIMARY KEY,
+EmployeeID int NOT NULL,
+EducationTypeID int NOT NULL DEFAULT 1,
+GPA numeric(4,3) NOT NULL )
+
+-- Adding a DEFAULT Constraint to an Existing Table
+
+ALTER TABLE HumanResources.Company
+ADD CONSTRAINT DF_Company_ParentCompanyID
+DEFAULT 1 FOR ParentCompanyID
+
+-- Dropping a Constraint from a Table
+
+ALTER TABLE HumanResources.Company
+DROP CONSTRAINT DF_Company_ParentCompanyID
+
+-- Using a Temporary Table forMultiple LookupsWithin a Batch
+
+CREATE TABLE #ProductCostStatistics
+( ProductID int NOT NULL PRIMARY KEY,
+AvgStandardCost money NOT NULL,
+ProductCount int NOT NULL)
+
+INSERT #ProductCostStatistics
+(ProductID, AvgStandardCost, ProductCount)
+SELECT ProductID,
+AVG(StandardCost) AvgStandardCost,
+COUNT(ProductID) Rowcnt
+FROM Production.ProductCostHistory
+GROUP BY ProductID
+
+SELECT TOP 3 *
+FROM #ProductCostStatistics
+ORDER BY AvgStandardCost ASC
+
+SELECT TOP 3 *
+FROM #ProductCostStatistics
+ORDER BY AvgStandardCost DESC
+
+SELECT AVG(AvgStandardCost) Average_of_AvgStandardCost
+FROM #ProductCostStatistics
+
+DROP TABLE #ProductCostStatistics
+
+-- Creating a TableVariable to Hold a Temporary Result Set
+
+DECLARE @ProductCostStatistics TABLE
+( ProductID int NOT NULL PRIMARY KEY,
+AvgStandardCost money NOT NULL,
+ProductCount int NOT NULL)
+
+INSERT @ProductCostStatistics
+(ProductID, AvgStandardCost, ProductCount)
+SELECT ProductID,
+AVG(StandardCost) AvgStandardCost,
+COUNT(ProductID) Rowcnt
+FROM Production.ProductCostHistory
+GROUP BY ProductID
+
+SELECT TOP 3 *
+FROM @ProductCostStatistics
+ORDER BY ProductCount
+
+-- Implementing Table Partitioning
+
+ALTER DATABASE AdventureWorks
+ADD FILEGROUP hitfg1
+
+ALTER DATABASE AdventureWorks
+ADD FILEGROUP hitfg2
+
+ALTER DATABASE AdventureWorks
+ADD FILEGROUP hitfg3
+
+ALTER DATABASE AdventureWorks
+ADD FILEGROUP hitfg4
+
+ALTER DATABASE AdventureWorks
+ADD FILE
+( NAME = awhitfg1,
+FILENAME = 'c:\Apress\aw_hitfg1.ndf',
+SIZE = 1MB
+)
+TO FILEGROUP hitfg1
+GO
+
+ALTER DATABASE AdventureWorks
+ADD FILE
+( NAME = awhitfg2,
+FILENAME = 'c:\Apress\aw_hitfg2.ndf',
+SIZE = 1MB
+)
+TO FILEGROUP hitfg2
+GO
+
+ALTER DATABASE AdventureWorks
+ADD FILE
+( NAME = awhitfg3,
+FILENAME = 'c:\Apress\aw_hitfg3.ndf',
+SIZE = 1MB
+)
+TO FILEGROUP hitfg3
+GO
+
+ALTER DATABASE AdventureWorks
+ADD FILE
+( NAME = awhitfg4,
+FILENAME = 'c:\Apress\aw_hitfg4.ndf',
+SIZE = 1MB
+)
+TO FILEGROUP hitfg4
+GO
+
+CREATE PARTITION FUNCTION HitDateRange (datetime)
+AS RANGE LEFT FOR VALUES ('1/1/2006', '1/1/2007', '1/1/2008')
+GO
+
+CREATE PARTITION SCHEME HitDateRangeScheme
+AS PARTITION HitDateRange
+TO ( hitfg1, hitfg2, hitfg3, hitfg4 )
+
+CREATE TABLE Sales.WebSiteHits
+(WebSiteHitID bigint NOT NULL IDENTITY(1,1),
+WebSitePage varchar(255) NOT NULL,
+HitDate datetime NOT NULL,
+CONSTRAINT PK_WebSiteHits
+PRIMARY KEY (WebSiteHitID, HitDate))
+ON [HitDateRangeScheme] (HitDate)
+
+-- Determining the Location of Data in a Partition
+
+INSERT Sales.WebSiteHits
+(WebSitePage, HitDate)
+VALUES ('Home Page', '10/22/2007')
+
+INSERT Sales.WebSiteHits
+(WebSitePage, HitDate)
+VALUES ('Home Page', '10/2/2006')
+
+INSERT Sales.WebSiteHits
+(WebSitePage, HitDate)
+VALUES ('Sales Page', '5/9/2008')
+
+INSERT Sales.WebSiteHits
+(WebSitePage, HitDate)
+VALUES ('Sales Page', '3/4/2000')
+
+SELECT HitDate,
+$PARTITION.HitDateRange (HitDate) Partition
+FROM Sales.WebSiteHits
+
+-- Adding a New Partition
+
+ALTER PARTITION SCHEME HitDateRangeScheme
+NEXT USED [PRIMARY]
+
+ALTER PARTITION FUNCTION HitDateRange ()
+SPLIT RANGE ('1/1/2009')
+
+INSERT Sales.WebSiteHits
+(WebSitePage, HitDate)
+VALUES ('Sales Page', '3/4/2009')
+
+SELECT HitDate,
+$PARTITION.HitDateRange (HitDate) Partition
+FROM Sales.WebSiteHits
+
+-- Removing a Partition
+
+ALTER PARTITION FUNCTION HitDateRange ()
+MERGE RANGE ('1/1/2007')
+
+SELECT HitDate,
+$PARTITION.HitDateRange (HitDate) Partition
+FROM Sales.WebSiteHits
+
+-- Moving a Partition to a Different Table
+
+CREATE TABLE Sales.WebSiteHitsHistory
+(WebSiteHitID bigint NOT NULL IDENTITY(1,1),
+WebSitePage varchar(255) NOT NULL,
+HitDate datetime NOT NULL,
+CONSTRAINT PK_WebSiteHitsHistory
+PRIMARY KEY (WebSiteHitID, HitDate))
+ON [HitDateRangeScheme] (HitDate)
+
+ALTER TABLE Sales.WebSiteHits SWITCH PARTITION 3
+TO Sales.WebSiteHitsHistory PARTITION 3
+
+SELECT HitDate,
+$PARTITION.HitDateRange (HitDate) Partition
+FROM Sales.WebSiteHitsHistory
+
+-- Removing Partition Functions and Schemes
+
+DROP TABLE Sales.WebSiteHitsHistory
+DROP TABLE Sales.WebSiteHits
+
+-- Dropping the partition scheme and function
+DROP PARTITION SCHEME HitDateRangeScheme
+DROP PARTITION FUNCTION HitDateRange
+
+-- Easing VLDB Manageability with Filegroups
+
+ALTER DATABASE AdventureWorks
+ADD FILEGROUP AW_FG2
+GO
+
+ALTER DATABASE AdventureWorks
+ADD FILE
+( NAME = AW_F2,
+FILENAME = 'C:\Apress\aw_f2.ndf',
+SIZE = 1MB
+)
+TO FILEGROUP AW_FG2
+GO
+
+CREATE TABLE HumanResources.AWCompany(
+AWCompanyID int IDENTITY(1,1) NOT NULL PRIMARY KEY,
+ParentAWCompanyID int NULL,
+AWCompanyNM varchar(25) NOT NULL,
+CreateDT datetime NOT NULL DEFAULT (getdate())
+) ON AW_FG2
+
+CREATE TABLE HumanResources.EWCompany(
+EWCompanyID int IDENTITY(1,1) NOT NULL PRIMARY KEY,
+ParentEWCompanyID int NULL,
+EWCompanyName varchar(25) NOT NULL,
+HeadQuartersImage varbinary(max) NULL,
+CreateDT datetime NOT NULL DEFAULT (getdate())
+) ON [PRIMARY]
+TEXTIMAGE_ON AW_FG2
+
+-- Reducing Disk Space Usage with Data Compression
+
+CREATE TABLE dbo.ArchiveJobPosting
+(JobPostingID int NOT NULL IDENTITY(1,1) PRIMARY KEY CLUSTERED,
+CandidateID int NOT NULL,
+JobDESC char(2000) NOT NULL
+)
+WITH (DATA_COMPRESSION = ROW)
+
+ALTER TABLE dbo.ArchiveJobPosting
+REBUILD WITH
+(DATA_COMPRESSION = NONE)
+
+INSERT dbo.ArchiveJobPosting
+(CandidateID, JobDESC)
+VALUES (CAST(RAND() * 10 as int),
+REPLICATE('a',50))
+GO 100000
+
+EXEC sys.sp_estimate_data_compression_savings
+@schema_name = 'dbo',
+@object_name = 'ArchiveJobPosting',
+@index_id = NULL,
+@partition_number = NULL,
+@data_compression = 'ROW'
+
+EXEC sys.sp_estimate_data_compression_savings
+@schema_name = 'dbo',
+@object_name = 'ArchiveJobPosting',
+@index_id = NULL,
+@partition_number = NULL,
+@data_compression = 'PAGE'
+
+ALTER TABLE dbo.ArchiveJobPosting
+REBUILD WITH
+(DATA_COMPRESSION = PAGE)
+
+CREATE PARTITION FUNCTION pfn_ArchivePart(int)
+AS RANGE LEFT FOR VALUES (50000, 100000, 150000)
+GO
+
+-- This command assumes your db has these filegroups
+CREATE PARTITION SCHEME psc_ArchivePart
+AS PARTITION pfn_ArchivePart
+TO (hitfg1, hitfg2, hitfg3, hitfg4) ;
+GO
+
+CREATE TABLE dbo.ArchiveJobPosting_V2
+(JobPostingID int NOT NULL IDENTITY(1,1) PRIMARY KEY CLUSTERED,
+CandidateID int NOT NULL,
+JobDESC char(2000) NOT NULL)
+ON psc_ArchivePart(JobPostingID)
+WITH (DATA_COMPRESSION = PAGE ON PARTITIONS (1 TO 3),
+DATA_COMPRESSION = ROW ON PARTITIONS (4))
+
+ALTER TABLE dbo.ArchiveJobPosting_V2
+REBUILD PARTITION = 4
+WITH (DATA_COMPRESSION = PAGE)

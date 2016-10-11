@@ -1,0 +1,192 @@
+-----------------------------------------------------------------------
+-- Source Code: SQL Server 2008 Transact-SQL Recipes, Joseph Sack
+-----------------------------------------------------------------------
+-- Do not execute the following code in a single batch.  These samples
+-- are provided in order to follow along with specific recipes.  
+-----------------------------------------------------------------------
+
+-- Creating a Full-Text Catalog
+
+USE AdventureWorks
+GO
+CREATE FULLTEXT CATALOG cat_Production_Document
+
+USE AdventureWorks
+GO
+CREATE FULLTEXT CATALOG cat_Production_Document_EX2
+WITH ACCENT_SENSITIVITY = ON
+
+-- Creating a Full-Text Index
+
+USE AdventureWorks
+GO
+
+CREATE FULLTEXT INDEX ON Production.Document
+(DocumentSummary, Document TYPE COLUMN FileExtension)
+KEY INDEX PK_Document_DocumentNode
+ON cat_Production_Document
+WITH CHANGE_TRACKING AUTO,
+STOPLIST = SYSTEM
+
+-- Modifying a Full-Text Catalog
+
+ALTER FULLTEXT CATALOG cat_Production_Document
+REORGANIZE
+
+ALTER FULLTEXT CATALOG cat_Production_Document
+AS DEFAULT
+
+ALTER FULLTEXT CATALOG cat_Production_Document
+REBUILD WITH ACCENT_SENSITIVITY = OFF
+
+-- Modifying a Full-Text Index
+
+ALTER FULLTEXT INDEX ON Production.Document
+ADD (Title)
+
+ALTER FULLTEXT INDEX ON Production.Document
+START FULL POPULATION
+
+ALTER FULLTEXT INDEX ON Production.Document
+SET CHANGE_TRACKING OFF
+
+ALTER FULLTEXT INDEX ON Production.Document
+DROP (Title)
+
+-- Retrieving Full-Text Catalog and IndexMetadata
+
+SELECT name, path, is_default, is_accent_sensitivity_on
+FROM sys.fulltext_catalogs
+
+SELECT object_name(object_id) table_name,
+change_tracking_state_desc, stoplist_id
+FROM sys.fulltext_indexes
+
+SELECT object_name(ic.object_id) tblname, c.name
+FROM sys.fulltext_index_columns ic
+INNER JOIN sys.columns c ON
+ic.object_id = c.object_id AND
+ic.column_id = c.column_id
+
+SELECT FULLTEXTCATALOGPROPERTY ('cat_Production_Document','PopulateStatus')
+PopulationStatus
+
+-- Discarding Common Strings froma Full-Text Index
+
+CREATE FULLTEXT STOPLIST TSQLRecipes;
+
+SELECT stoplist_id,name,principal_id
+FROM sys.fulltext_stoplists
+
+ALTER FULLTEXT STOPLIST TSQLRecipes
+ADD 'SQL' LANGUAGE 'English';
+
+ALTER FULLTEXT STOPLIST TSQLRecipes
+ADD 'Server' LANGUAGE 'English';
+
+SELECT stoplist_id,stopword,language
+FROM sys.fulltext_stopwords
+
+--Example table
+CREATE TABLE dbo.SQLTopic
+(SQLTopic int IDENTITY PRIMARY KEY,
+SQLTopicHeaderNM varchar(255) NOT NULL,
+SQLTopicBody varchar(max) NOT NULL)
+GO
+
+-- Create example catalog
+CREATE FULLTEXT CATALOG ftcat_SQLDocumentation
+AS DEFAULT
+GO
+
+-- Create full-text index binding to our new stoplist
+-- Look up your actual PK constraint name using sp_help 'dbo.sqltopic'
+CREATE FULLTEXT INDEX ON dbo.SQLTopic(SQLTopicBody)
+KEY INDEX PK__SQLTopic__AD5554EC442B18F2
+WITH STOPLIST = TSQLRecipes
+GO
+
+SELECT stoplist_id
+FROM sys.fulltext_indexes
+WHERE object_id = object_id('dbo.SQLTopic')
+
+SELECT display_term, special_term
+FROM sys.dm_fts_parser
+('"SQL Server 2008 Transact-SQL Recipes"', 1033, 5, 0)
+
+ALTER FULLTEXT STOPLIST TSQLRecipes
+DROP 'Server' LANGUAGE 'English';
+
+ALTER FULLTEXT INDEX ON dbo.SQLTopic
+SET STOPLIST SYSTEM
+GO
+
+DROP FULLTEXT STOPLIST TSQLRecipes;
+
+-- Dropping a Full-Text Index
+
+DROP FULLTEXT INDEX ON Production.Document
+
+-- Dropping a Full-Text Catalog
+
+DROP FULLTEXT CATALOG cat_Production_Document
+
+-- Basic Searching
+
+USE AdventureWorks
+GO
+CREATE FULLTEXT CATALOG cat_Production_Document
+
+CREATE FULLTEXT INDEX ON Production.Document
+(DocumentSummary)
+KEY INDEX PK_Document_DocumentNode
+ON cat_Production_Document
+WITH CHANGE_TRACKING AUTO,
+STOPLIST = SYSTEM
+
+-- Using FREETEXT to Search Full-Text Indexed Columns
+
+SELECT DocumentNode, DocumentSummary
+FROM Production.Document
+WHERE FREETEXT (DocumentSummary, 'change pedal' )
+
+-- Using CONTAINS forWord Searching
+
+SELECT DocumentNode, DocumentSummary
+FROM Production.Document
+WHERE CONTAINS (DocumentSummary, '"replacing" OR "pedals"' )
+
+-- Using CONTAINS to Search withWildcards
+
+SELECT DocumentNode, DocumentSummary
+FROM Production.Document
+WHERE CONTAINS (DocumentSummary, '"import*"' )
+
+-- Using CONTAINS to Search for InflectionalMatches
+
+SELECT DocumentNode, DocumentSummary
+FROM Production.Document
+WHERE CONTAINS(DocumentSummary, ' FORMSOF (INFLECTIONAL, replace) ')
+
+-- Using CONTAINS for Searching Results by TermProximity
+
+SELECT DocumentSummary
+FROM Production.Document
+WHERE CONTAINS(DocumentSummary, 'oil NEAR grease')
+
+-- Returning Ranked Search Results byMeaning
+
+SELECT f.RANK, DocumentNode, DocumentSummary
+FROM Production.Document d
+INNER JOIN FREETEXTTABLE(Production.Document, DocumentSummary, 'bicycle seat') f
+ON d.DocumentNode = f.[KEY]
+ORDER BY RANK DESC
+
+-- Returning Ranked Search Results byWeightedValue
+
+SELECT f.RANK, d.DocumentNode, d.DocumentSummary
+FROM Production.Document d
+INNER JOIN CONTAINSTABLE(Production.Document, DocumentSummary,
+'ISABOUT ( bicycle weight (.9), seat weight (.1))') f
+ON d.DocumentNode = f.[KEY]
+ORDER BY RANK DESC

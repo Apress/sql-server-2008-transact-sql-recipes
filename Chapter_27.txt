@@ -1,0 +1,141 @@
+-----------------------------------------------------------------------
+-- Source Code: SQL Server 2008 Transact-SQL Recipes, Joseph Sack
+-----------------------------------------------------------------------
+-- Do not execute the following code in a single batch.  These samples
+-- are provided in order to follow along with specific recipes.  
+-----------------------------------------------------------------------
+
+-- Creating a Linked Server to Another SQL Server Instance
+
+EXEC sp_addlinkedserver
+@server= 'JOEPROD',
+@srvproduct= 'SQL Server'
+
+EXEC sp_addlinkedserver
+@server= 'JOEPROD\NODE2',
+@srvproduct= 'SQL Server'
+
+-- Configuring Linked Server Properties
+
+EXEC sp_serveroption
+@server = 'JOEPROD\NODE2' ,
+@optname = 'query timeout',
+@optvalue = 60
+
+-- Viewing Linked Server Information
+
+SELECT name, query_timeout, lazy_schema_validation
+FROM sys.servers
+WHERE is_linked = 1
+
+-- Dropping a Linked Server
+
+EXEC sp_dropserver
+@server= 'JOEPROD',
+@droplogins= 'droplogins'
+
+-- Adding a Linked Server Login Mapping
+
+EXEC sp_addlinkedsrvlogin
+@rmtsrvname = 'JOEPROD\NODE2',
+@useself = 'false' ,
+@locallogin = NULL, -- Applies to all local logins
+@rmtuser = 'test',
+@rmtpassword = 'test1!'
+
+-- Viewing Linked Logins
+
+SELECT s.name LinkedServerName, ll.remote_name, p.name LocalLoginName
+FROM sys.linked_logins ll
+INNER JOIN sys.servers s ON
+s.server_id = ll.server_id
+LEFT OUTER JOIN sys.server_principals p ON
+p.principal_id = ll.local_principal_id
+WHERE s.is_linked = 1
+
+-- Dropping a Linked Server LoginMapping
+
+EXEC sp_droplinkedsrvlogin
+@rmtsrvname= 'JOEPROD\NODE2' ,
+@locallogin= NULL
+
+-- Executing Distributed Queries Against a Linked Server
+
+SELECT object_name, counter_name, instance_name,
+cntr_value, cntr_type
+FROM JOEPROD.master.sys.dm_os_performance_counters
+WHERE counter_name = 'Active Transactions' AND
+instance_name = '_Total'
+
+EXEC [JOEPROD\NODE2].master.dbo.sp_monitor
+
+-- Creating and Using an Alias to Reference Four-Part Linked Server Names
+
+CREATE SYNONYM dbo.PerfInfo
+FOR JOEPROD.master.sys.dm_os_performance_counters
+
+SELECT cntr_value
+FROM dbo.PerfInfo
+WHERE counter_name = 'Active Transactions' AND
+instance_name = '_Total'
+
+DROP SYNONYM dbo.PerfInfo
+
+CREATE SYNONYM dbo.PerfInfo
+FOR [JOEPROD\NODE2].master.sys.dm_os_performance_counters
+
+-- Executing Distributed Queries Using OPENQUERY
+
+SELECT cntr_value
+FROM OPENQUERY ( [JOEPROD] ,
+'SELECT object_name, counter_name, instance_name, cntr_value, cntr_type
+FROM master.sys.dm_os_performance_counters
+WHERE counter_name = ''Active Transactions'' AND
+instance_name = ''_Total''' )
+
+-- Executing Ad Hoc Queries Using OPENROWSET
+
+SELECT *
+FROM OPENROWSET
+('SQLNCLI','TESTSRV\NODE2';'test';'test1!',
+'SELECT * FROM AdventureWorks.HumanResources.Department
+WHERE GroupName = ''Research and Development''')
+
+-- Reading Data froma File Using OPENROWSET BULK Options
+
+/*
+21,Sales Phone Rep,2005-06-01 00:00:00
+20,Sales Phone Manager,2005-06-01 00:00:00
+*/
+
+/*
+10.0
+3
+1 SQLCHAR 0 2 "," 1 ContactTypeID ""
+2 SQLCHAR 0 20 "," 2 Name SQL_Latin1_General_CP1_CI_AS
+3 SQLCHAR 0 19 "\r\n" 3 ModifiedDate ""
+*/
+
+SELECT ContactTypeID, Name, ModifiedDate
+FROM OPENROWSET( BULK 'C:\Apress\Recipes\ContactType.txt',
+FORMATFILE = 'C:\Apress\Recipes\ContactTypeFormat.Fmt',
+FIRSTROW = 1,
+MAXERRORS = 5,
+ERRORFILE = 'C:\Apress\Recipes\ImportErrors.txt' )
+AS ContactType
+
+-- Create a table to hold import documents
+CREATE TABLE dbo.ImportRepository
+(ImportHistoryID int IDENTITY(1,1) NOT NULL PRIMARY KEY,
+ImportFile varchar(max) NOT NULL)
+GO
+
+INSERT dbo.ImportRepository
+(ImportFile)
+SELECT BulkColumn
+FROM OPENROWSET( BULK 'C:\Apress\Recipes\ContactType.txt',
+SINGLE_CLOB) as ContactTypeFile
+
+SELECT ImportFile
+FROM dbo.ImportRepository
+

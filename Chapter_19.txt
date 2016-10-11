@@ -1,0 +1,398 @@
+-----------------------------------------------------------------------
+-- Source Code: SQL Server 2008 Transact-SQL Recipes, Joseph Sack
+-----------------------------------------------------------------------
+-- Do not execute the following code in a single batch.  These samples
+-- are provided in order to follow along with specific recipes.  
+-----------------------------------------------------------------------
+
+-- Using a Function to Encrypt by Passphrase
+
+-- Table used to store the encrypted data
+-- for the purposes of this recipe
+CREATE TABLE #SecretInfo
+(Secret varbinary(8000) NOT NULL)
+GO
+
+INSERT #SecretInfo
+(Secret)
+SELECT EncryptByPassPhrase(
+'My Password Used To Encrypt This String in 2008.',
+'This is the text I need to secure.')
+
+SELECT Secret
+FROM #SecretInfo
+
+SELECT CAST(DecryptByPassPhrase(
+'My Password Used To Encrypt This String in 2008.',
+Secret) as varchar(50))
+FROM #SecretInfo
+
+-- Backing Up and Restoring a ServiceMaster Key
+
+BACKUP SERVICE MASTER KEY
+TO FILE = 'C:\Apress\Recipes\SMK.bak'
+ENCRYPTION BY PASSWORD = 'MakeItAGoodOne!1AB'
+
+RESTORE SERVICE MASTER KEY
+FROM FILE = 'C:\Apress\Recipes\SMK.bak'
+DECRYPTION BY PASSWORD = 'MakeItAGoodOne!1AB'
+
+-- Creating, Regenerating, and Dropping a DatabaseMaster Key
+
+USE BookStore
+GO
+DROP MASTER KEY
+
+IF NOT EXISTS (SELECT name
+FROM sys.databases
+WHERE name = 'BookStore')
+BEGIN
+CREATE DATABASE BookStore
+END
+GO
+
+USE BookStore
+GO
+CREATE MASTER KEY ENCRYPTION BY PASSWORD = '99a555ac-cf60-472b-9c1e-ed735ffbb089'
+
+ALTER MASTER KEY
+REGENERATE WITH ENCRYPTION BY PASSWORD = 'uglypassword1C3ED8CF'
+
+DROP MASTER KEY
+
+-- Backing Up and Restoring a DatabaseMaster Key
+
+USE BookStore
+GO
+CREATE MASTER KEY ENCRYPTION BY PASSWORD = 'MagneticFields!'
+GO
+
+BACKUP MASTER KEY TO FILE = 'C:\Apress\Recipes\BookStore_Master_Key.BAK'
+ENCRYPTION BY PASSWORD = '4D280837!!!'
+
+RESTORE MASTER KEY FROM FILE = 'C:\Apress\Recipes\BookStore_Master_Key.BAK'
+DECRYPTION BY PASSWORD = '4D280837!!!'
+ENCRYPTION BY PASSWORD = 'MagneticFields!'
+
+-- Removing ServiceMaster Key Encryption fromthe Database Master Key
+
+USE BookStore
+GO
+ALTER MASTER KEY DROP ENCRYPTION BY SERVICE MASTER KEY
+
+OPEN MASTER KEY DECRYPTION BY PASSWORD = 'MagneticFields!'
+ALTER MASTER KEY ADD ENCRYPTION BY SERVICE MASTER KEY
+CLOSE MASTER KEY
+
+-- Creating an Asymmetric Key
+
+USE BookStore
+GO
+CREATE ASYMMETRIC KEY asymBookSellerKey
+WITH ALGORITHM = RSA_512
+ENCRYPTION BY PASSWORD = 'EEB0B4DD!!!'
+
+-- Viewing Asymmetric Keys in the Current Database
+
+SELECT name, algorithm_desc, pvt_key_encryption_type_desc
+FROM sys.asymmetric_keys
+
+-- Modifying the Asymmetric Key’s Private Key Password
+
+ALTER ASYMMETRIC KEY asymBookSellerKey
+WITH PRIVATE KEY
+(ENCRYPTION BY PASSWORD = 'newpasswordE4D352F280E0',
+DECRYPTION BY PASSWORD = 'EEB0B4DD!!!')
+
+-- Encrypting and Decrypting Data Using an Asymmetric Key
+
+Use BookStore
+GO
+CREATE TABLE dbo.BookSellerBankRouting
+(BookSellerID int NOT NULL PRIMARY KEY,
+BankRoutingNBR varbinary(300) NOT NULL)
+
+INSERT dbo.BookSellerBankRouting
+(BookSellerID, BankRoutingNBR)
+VALUES (22,
+EncryptByAsymKey(AsymKey_ID('asymBookSellerKey'),
+'137492837583249ABR'))
+
+SELECT CAST(BankRoutingNBR as varchar(100)) BankRoutingNBR
+FROM dbo.BookSellerBankRouting
+WHERE BookSellerID = 22
+
+SELECT CAST(DecryptByAsymKey
+( AsymKey_ID('asymBookSellerKey'),
+BankRoutingNBR,
+N'newpasswordE4D352F280E0') as varchar(100)) BankRoutingNBR
+FROM dbo.BookSellerBankRouting
+WHERE BookSellerID = 22
+
+-- Dropping an Asymmetric Key
+
+DROP ASYMMETRIC KEY asymBookSellerKey
+
+-- Creating a Symmetric Key
+
+USE BookStore
+GO
+-- Create asymmetric key used to encrypt symmetric key
+CREATE ASYMMETRIC KEY asymBookSellerKey
+WITH ALGORITHM = RSA_512
+ENCRYPTION BY PASSWORD = 'EEB0B4DD!!!'
+
+-- Create symmetric key
+CREATE SYMMETRIC KEY sym_BookStore
+WITH ALGORITHM = TRIPLE_DES
+ENCRYPTION BY ASYMMETRIC KEY asymBookSellerKey
+
+-- Viewing Symmetric Keys in the Current Database
+
+SELECT name, algorithm_desc
+FROM sys.symmetric_keys
+
+-- Changing How a Symmetric Key Is Encrypted
+
+OPEN SYMMETRIC KEY sym_BookStore
+DECRYPTION BY ASYMMETRIC KEY asymBookSellerKey
+WITH PASSWORD = 'EEB0B4DD!!!'
+
+ALTER SYMMETRIC KEY sym_BookStore
+ADD ENCRYPTION BY PASSWORD = 'hushhush!123'
+
+ALTER SYMMETRIC KEY sym_BookStore
+DROP ENCRYPTION BY ASYMMETRIC KEY asymBookSellerKey
+
+CLOSE SYMMETRIC KEY sym_BookStore
+
+-- Using Symmetric Key Encryption and Decryption
+
+USE BookStore
+GO
+CREATE TABLE dbo.PasswordHint
+(CustomerID int NOT NULL PRIMARY KEY,
+PasswordHintQuestion varchar(300) NOT NULL,
+PasswordHintAnswer varbinary(200) NOT NULL)
+GO
+
+OPEN SYMMETRIC KEY sym_BookStore
+DECRYPTION BY PASSWORD = 'hushhush!123'
+
+INSERT dbo.PasswordHint
+(CustomerID, PasswordHintQuestion, PasswordHintAnswer)
+VALUES
+(23, 'What is the name of the hospital you were born in?',
+EncryptByKey(Key_GUID('sym_BookStore '), 'Mount Marie'))
+
+CLOSE SYMMETRIC KEY sym_BookStore
+
+OPEN SYMMETRIC KEY sym_BookStore
+DECRYPTION BY PASSWORD = 'hushhush!123'
+
+SELECT CAST(DecryptByKey(PasswordHintAnswer) as varchar(200)) PasswordHintAnswer
+FROM dbo.PasswordHint
+WHERE CustomerID = 23
+
+CLOSE SYMMETRIC KEY sym_BookStore
+
+CREATE TABLE dbo.BookSellerLogins
+(LoginID int NOT NULL PRIMARY KEY,
+Password varbinary(256) NOT NULL)
+GO
+
+INSERT dbo.BookSellerLogins
+(LoginID, Password)
+VALUES(22, CAST('myeasypassword' as varbinary))
+
+OPEN SYMMETRIC KEY sym_BookStore
+DECRYPTION BY PASSWORD = 'hushhush!123'
+
+UPDATE dbo.BookSellerLogins
+SET Password =
+EncryptByKey(Key_GUID('sym_BookStore'),
+Password,
+1,
+CAST(LoginID as varbinary))
+
+CLOSE SYMMETRIC KEY sym_BookStore
+
+OPEN SYMMETRIC KEY sym_BookStore
+DECRYPTION BY PASSWORD = 'hushhush!123'
+
+SELECT LoginID,
+CAST(DecryptByKey(Password, 1,
+CAST(LoginID as varbinary)) as varchar(30)) Password
+FROM dbo.BookSellerLogins
+
+CLOSE SYMMETRIC KEY sym_BookStore
+
+-- Dropping a Symmetric Key
+
+DROP SYMMETRIC KEY sym_BookStore
+
+-- Creating a Database Certificate
+
+USE BookStore
+GO
+CREATE CERTIFICATE cert_BookStore
+ENCRYPTION BY PASSWORD = 'AA5FA6AC!!!'
+WITH SUBJECT = 'BookStore Database Encryption Certificate',
+START_DATE = '2/20/2008', EXPIRY_DATE = '10/20/2009'
+
+-- Viewing Certificates in the Database
+
+SELECT name, pvt_key_encryption_type_desc, issuer_name
+FROM sys.certificates
+
+-- Backing Up and Restoring a Certificate
+
+BACKUP CERTIFICATE cert_BookStore
+TO FILE = 'C:\Apress\Recipes\Certificates\certBookStore.BAK'
+WITH PRIVATE KEY ( FILE = 'C:\Apress\Recipes\Certificates\certBookStorePK.BAK' ,
+ENCRYPTION BY PASSWORD = '3439F6A!!!',
+DECRYPTION BY PASSWORD = 'AA5FA6AC!!!' )
+
+DROP CERTIFICATE cert_BookStore
+GO
+
+CREATE CERTIFICATE cert_BookStore
+FROM FILE = 'C:\Apress\Recipes\Certificates\certBookStore.BAK'
+WITH PRIVATE KEY (FILE = 'C:\Apress\Recipes\Certificates\certBookStorePK.BAK',
+DECRYPTION BY PASSWORD = '3439F6A!!!',
+ENCRYPTION BY PASSWORD = 'AA5FA6AC!!!')
+
+-- Managing a Certificate’s Private Key
+
+ALTER CERTIFICATE cert_BookStore
+REMOVE PRIVATE KEY
+
+ALTER CERTIFICATE cert_BookStore
+WITH PRIVATE KEY
+(FILE = 'C:\Apress\Recipes\Certificates\certBookStorePK.BAK',
+DECRYPTION BY PASSWORD = '3439F6A!!!',
+ENCRYPTION BY PASSWORD = 'AA5FA6AC!!!')
+
+ALTER CERTIFICATE cert_BookStore
+WITH PRIVATE KEY (DECRYPTION BY PASSWORD = 'AA5FA6AC!!!',
+ENCRYPTION BY PASSWORD = 'mynewpassword!!!Efsj')
+
+-- Using Certificate Encryption and Decryption
+
+USE BookStore
+GO
+INSERT dbo.PasswordHint
+(CustomerID, PasswordHintQuestion, PasswordHintAnswer)
+VALUES
+(1, 'What is the name of the hospital you were born in?',
+EncryptByCert(Cert_ID('cert_BookStore'), 'Hickman Hospital'))
+
+SELECT CAST(PasswordHintAnswer as varchar(200)) PasswordHintAnswer
+FROM dbo.PasswordHint
+WHERE CustomerID = 1
+
+SELECT CAST(DecryptByCert(
+Cert_ID('cert_BookStore'),
+PasswordHintAnswer,
+N'mynewpassword!!!Efsj')
+as varchar(200)) PasswordHintAnswer
+FROM dbo.PasswordHint
+WHERE CustomerID = 1
+
+-- Automatically Opening and Decrypting via a Symmetric Key
+
+USE BookStore
+GO
+CREATE ASYMMETRIC KEY asymBookSell_V2
+WITH ALGORITHM = RSA_512
+
+CREATE SYMMETRIC KEY sym_BookStore_V2
+WITH ALGORITHM = TRIPLE_DES
+ENCRYPTION BY ASYMMETRIC KEY asymBookSell_V2
+
+OPEN SYMMETRIC KEY sym_BookStore_V2
+DECRYPTION BY ASYMMETRIC KEY asymBookSell_V2
+
+INSERT dbo.PasswordHint
+(CustomerID, PasswordHintQuestion, PasswordHintAnswer)
+VALUES
+(45, 'What is the name of the hospital you were born in?',
+EncryptByKey(Key_GUID('sym_BookStore_V2'), 'Sister Helen'))
+
+CLOSE SYMMETRIC KEY sym_BookStore_V2
+
+SELECT CAST(
+DecryptByKeyAutoAsymKey
+(ASYMKEY_ID('asymBookSell_V2'),
+NULL,
+PasswordHintAnswer) as varchar)
+FROM dbo.PasswordHint
+WHERE CustomerID = 45
+
+-- Enabling Transparent Data Encryption
+
+USE master
+GO
+CREATE MASTER KEY ENCRYPTION
+BY PASSWORD = '834BACDA-10E6-4BBC-A698-952533E54337'
+GO
+
+CREATE CERTIFICATE TDE_Server_Certificate
+WITH SUBJECT = 'Server-level cert for TDE'
+GO
+
+USE BookStore
+GO
+CREATE DATABASE ENCRYPTION KEY
+WITH ALGORITHM = TRIPLE_DES_3KEY
+ENCRYPTION BY SERVER CERTIFICATE TDE_Server_Certificate
+GO
+
+ALTER DATABASE BookStore
+SET ENCRYPTION ON
+GO
+
+SELECT is_encrypted
+FROM sys.databases
+WHERE name = 'BookStore'
+
+-- Managing and Removing TDE
+
+ALTER DATABASE ENCRYPTION KEY
+REGENERATE WITH ALGORITHM = AES_128
+
+SELECT DB_NAME(database_id) databasenm,
+CASE encryption_state
+WHEN 0 THEN 'No encryption'
+WHEN 1 THEN 'Unencrypted'
+WHEN 2 THEN 'Encryption in progress'
+WHEN 3 THEN 'Encrypted'
+WHEN 4 THEN 'Key change in progress'
+WHEN 5 THEN 'Decryption in progress'
+END encryption_state,
+key_algorithm,
+key_length
+FROM sys.dm_database_encryption_keys
+
+USE master
+GO
+CREATE CERTIFICATE TDE_Server_Certificate_V2
+WITH SUBJECT = 'Server-level cert for TDE V2'
+GO
+
+USE BookStore
+GO
+ALTER DATABASE ENCRYPTION KEY
+ENCRYPTION BY SERVER CERTIFICATE TDE_Server_Certificate_V2
+
+ALTER DATABASE BookStore
+SET ENCRYPTION OFF
+GO
+
+USE BookStore
+GO
+DROP DATABASE ENCRYPTION KEY
+
+
+
+

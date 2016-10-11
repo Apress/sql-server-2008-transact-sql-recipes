@@ -1,0 +1,810 @@
+-----------------------------------------------------------------------
+-- Source Code: SQL Server 2008 Transact-SQL Recipes, Joseph Sack
+-----------------------------------------------------------------------
+-- Do not execute the following code in a single batch.  These samples
+-- are provided in order to follow along with specific recipes.  
+-----------------------------------------------------------------------
+
+-- Inserting a Row into a Table
+
+USE AdventureWorks
+GO
+INSERT Production.Location
+(Name, CostRate, Availability)
+VALUES ('Wheel Storage', 11.25, 80.00)
+
+SELECT Name,
+CostRate,
+Availability
+FROM Production.Location
+WHERE Name = 'Wheel Storage'
+
+-- Inserting a Row Using Default Values
+
+INSERT Production.Location
+(Name, CostRate, Availability, ModifiedDate)
+VALUES ('Wheel Storage 2', 11.25, 80.00, '1/1/2005')
+
+INSERT Production.Location
+(Name, CostRate, Availability, ModifiedDate)
+VALUES ('Wheel Storage 3', 11.25, 80.00, DEFAULT)
+
+INSERT dbo.ExampleTable
+DEFAULT VALUES
+
+-- Explicitly Inserting a Value into an IDENTITY Column
+
+INSERT HumanResources.Department
+(DepartmentID, Name, GroupName)
+VALUES (17, 'Database Services', 'Information Technology')
+
+SET IDENTITY_INSERT HumanResources.Department ON
+
+INSERT HumanResources.Department
+(DepartmentID, Name, GroupName)
+VALUES (17, 'Database Services', 'Information Technology')
+
+SET IDENTITY_INSERT HumanResources.Department OFF
+
+-- Inserting a Row into a Table with a uniqueidentifier Column
+
+INSERT Purchasing.ShipMethod
+(Name, ShipBase, ShipRate, rowguid)
+VALUES('MIDDLETON CARGO TS1', 8.99, 1.22, NEWID())
+
+SELECT rowguid, name
+FROM Purchasing.ShipMethod
+WHERE Name = 'MIDDLETON CARGO TS1'
+
+-- Inserting Rows Using an INSERT...SELECT Statement
+
+CREATE TABLE [dbo]. [Shift_Archive](
+[ShiftID] [tinyint] NOT NULL,
+[Name] [dbo]. [Name] NOT NULL,
+[StartTime] [datetime] NOT NULL,
+[EndTime] [datetime] NOT NULL,
+[ModifiedDate] [datetime] NOT NULL DEFAULT (getdate()),
+CONSTRAINT [PK_Shift_ShiftID] PRIMARY KEY CLUSTERED
+([ShiftID] ASC)
+)
+GO
+
+INSERT dbo.Shift_Archive
+(ShiftID, Name, StartTime, EndTime, ModifiedDate)
+SELECT ShiftID, Name, StartTime, EndTime, ModifiedDate
+FROM HumanResources.Shift
+ORDER BY ShiftID
+
+SELECT ShiftID, Name
+FROM Shift_Archive
+
+-- Inserting Data from a Stored Procedure Call
+
+CREATE PROCEDURE dbo.usp_SEL_Production_TransactionHistory
+@ModifiedStartDT datetime,
+@ModifiedEndDT datetime
+AS
+SELECT TransactionID, ProductID, ReferenceOrderID, ReferenceOrderLineID,
+TransactionDate, TransactionType, Quantity, ActualCost, ModifiedDate
+FROM Production.TransactionHistory
+WHERE ModifiedDate BETWEEN @ModifiedStartDT AND @ModifiedEndDT AND
+TransactionID NOT IN
+(SELECT TransactionID
+FROM Production.TransactionHistoryArchive)
+GO
+
+EXEC dbo.usp_SEL_Production_TransactionHistory '6/2/04', '6/3/04'
+
+INSERT Production.TransactionHistoryArchive
+(TransactionID, ProductID, ReferenceOrderID, ReferenceOrderLineID, TransactionDate,
+TransactionType, Quantity, ActualCost, ModifiedDate)
+EXEC dbo.usp_SEL_Production_TransactionHistory '6/2/04', '6/3/04'
+
+-- Inserting Multiple Rows with VALUES
+
+-- Create a lookup table
+CREATE TABLE HumanResources.Degree
+(DegreeID int NOT NULL IDENTITY(1,1) PRIMARY KEY,
+DegreeNM varchar(30) NOT NULL,
+DegreeCD varchar(5) NOT NULL,
+ModifiedDate datetime NOT NULL)
+GO
+
+INSERT HumanResources.Degree
+(DegreeNM, DegreeCD, ModifiedDate)
+VALUES
+('Bachelor of Arts', 'B.A.', GETDATE()),
+('Bachelor of Science', 'B.S.', GETDATE()),
+('Master of Arts', 'M.A.', GETDATE()),
+('Master of Science', 'M.S.', GETDATE()),
+('Associate''s Degree', 'A.A.', GETDATE())
+GO
+
+-- Using VALUES As a Table Source
+
+SELECT DegreeNM, DegreeCD, ModifiedDT
+FROM
+(VALUES
+('Bachelor of Arts', 'B.A.', GETDATE()),
+('Bachelor of Science', 'B.S.', GETDATE()),
+('Master of Arts', 'M.A.', GETDATE()),
+('Master of Science', 'M.S.', GETDATE()),
+('Associate''s Degree', 'A.A.', GETDATE()))
+Degree (DegreeNM, DegreeCD, ModifiedDT)
+
+-- Updating a Single Row
+
+SELECT DiscountPct
+FROM Sales.SpecialOffer
+WHERE SpecialOfferID = 10
+
+UPDATE Sales.SpecialOffer
+SET DiscountPct = 0.15
+WHERE SpecialOfferID = 10
+
+SELECT DiscountPct
+FROM Sales.SpecialOffer
+WHERE SpecialOfferID = 10
+
+-- Updating Rows Based on a FROM and WHERE Clause
+
+UPDATE Sales.ShoppingCartItem
+SET Quantity =2,
+ModifiedDate = GETDATE()
+FROM Sales.ShoppingCartItem c
+INNER JOIN Production.Product p ON
+c.ProductID = p.ProductID
+WHERE p.Name = 'Full-Finger Gloves, M ' AND
+c.Quantity > 2
+
+-- Updating Large Value Data Type Columns
+
+CREATE TABLE dbo.RecipeChapter
+(ChapterID int NOT NULL,
+Chapter varchar(max) NOT NULL)
+GO
+
+INSERT dbo.RecipeChapter
+(ChapterID, Chapter)
+VALUES
+(1, 'At the beginning of each chapter you will notice
+that basic concepts are covered first.' )
+
+UPDATE RecipeChapter
+SET Chapter .WRITE (' In addition to the basics, this chapter will also provide
+recipes that can be used in your day to day development and administration.' ,
+NULL, NULL)
+WHERE ChapterID = 1
+
+UPDATE RecipeChapter
+SET Chapter .WRITE('daily', 181, 10)
+WHERE ChapterID = 1
+
+SELECT Chapter
+FROM RecipeChapter
+WHERE ChapterID = 1
+
+-- Inserting or Updating an Image File Using OPENROWSET and BULK
+
+CREATE TABLE dbo.StockBmps
+(StockBmpID int NOT NULL,
+bmp varbinary(max) NOT NULL)
+GO
+
+INSERT dbo.StockBmps
+(StockBmpID, bmp)
+SELECT 1,
+BulkColumn
+FROM OPENROWSET(BULK
+'C:\Apress\StockPhotoOne.bmp', SINGLE_BLOB) AS x
+
+SELECT bmp
+FROM StockBmps
+WHERE StockBmpID = 1
+
+UPDATE dbo.StockBmps
+SET bmp =
+(SELECT BulkColumn
+FROM OPENROWSET(BULK 'C:\Apress\StockPhotoTwo.bmp', SINGLE_BLOB) AS x)
+WHERE StockBmpID =1
+
+-- Storing Unstructured Data on the File System While Maintaining SQL Server Transactional Control
+
+SELECT SERVERPROPERTY('FilestreamShareName') ShareName,
+SERVERPROPERTY('FilestreamEffectiveLevel') EffectiveLevel,
+SERVERPROPERTY('FilestreamConfiguredLevel') ConfiguredLevel
+
+USE master
+GO
+
+CREATE DATABASE PhotoRepository ON PRIMARY
+( NAME = N'PhotoRepository',
+FILENAME = N'C:\Apress\MDF\PhotoRepository.mdf' ,
+SIZE = 3048KB ,
+FILEGROWTH = 1024KB ),
+FILEGROUP FS_PhotoRepository CONTAINS FILESTREAM
+(NAME = 'FG_PhotoRepository',
+FILENAME = N'C:\Apress\FILESTREAM')
+LOG ON
+( NAME = N'PhotoRepository_log',
+FILENAME = N'C:\Apress\LDF\PhotoRepository_log.ldf' ,
+SIZE = 1024KB ,
+FILEGROWTH = 10%)
+GO
+
+
+USE PhotoRepository
+GO
+CREATE TABLE dbo.BookPhoto
+(BookPhotoID uniqueidentifier ROWGUIDCOL NOT NULL PRIMARY KEY,
+BookPhotoNM varchar(50) NOT NULL,
+BookPhotoFile varbinary(max) FILESTREAM)
+GO
+
+INSERT dbo.BookPhoto
+(BookPhotoID, BookPhotoNM, BookPhotoFile)
+SELECT NEWID(),
+'SQL Server 2008 Transact-SQL Recipes cover',
+CHAPTER 2 n PERFORM, CAPTURE, AND TRACK DATA MODIFICATIONS 81
+BulkColumn
+FROM OPENROWSET(BULK
+'C:\Apress\TSQL2008Recipes.bmp', SINGLE_BLOB) AS x
+
+SELECT BookPhotoID, BookPhotoNM, BookPhotoFile
+FROM dbo.BookPhoto
+
+BEGIN TRAN
+
+SELECT BookPhotoFile.PathName()
+FROM dbo.BookPhoto
+WHERE BookPhotoNM = 'SQL Server 2008 Transact-SQL Recipes cover'
+
+SELECT GET_FILESTREAM_TRANSACTION_CONTEXT()
+
+COMMIT TRAN
+
+UPDATE dbo.BookPhoto
+SET BookPhotoFile = NULL
+WHERE BookPhotoNM = 'SQL Server 2008 Transact-SQL Recipes cover'
+
+
+-- Assigning and Modifying Database Values “in Place”
+
+
+USE AdventureWorks
+GO
+
+CREATE TABLE HumanResources.EmployeePayScale
+(EmployeePayScaleID int NOT NULL PRIMARY KEY IDENTITY(1,1),
+BasePayAMT numeric(9,2) NOT NULL,
+ModifiedDate datetime NOT NULL DEFAULT GETDATE())
+GO
+
+-- Using new multiple-row insert functionality
+INSERT HumanResources.EmployeePayScale
+(BasePayAMT)
+VALUES
+(30000.00),
+(40000.00),
+(50000.00),
+(60000.00)
+
+SELECT BasePayAMT
+FROM HumanResources.EmployeePayScale
+WHERE EmployeePayScaleID = 4
+
+UPDATE HumanResources.EmployeePayScale
+SET BasePayAMT = BasePayAMT + 10000
+WHERE EmployeePayScaleID = 4
+
+SELECT BasePayAMT
+FROM HumanResources.EmployeePayScale
+WHERE EmployeePayScaleID = 4
+
+UPDATE HumanResources.EmployeePayScale
+SET BasePayAMT += 10000
+WHERE EmployeePayScaleID = 4
+
+SELECT BasePayAMT
+FROM HumanResources.EmployeePayScale
+WHERE EmployeePayScaleID = 4
+
+UPDATE HumanResources.EmployeePayScale
+SET BasePayAMT *= 2
+WHERE EmployeePayScaleID = 4
+
+SELECT BasePayAMT
+FROM HumanResources.EmployeePayScale
+WHERE EmployeePayScaleID = 4
+
+
+-- Deleting Rows
+
+SELECT *
+INTO Production.Example_ProductProductPhoto
+FROM Production.ProductProductPhoto
+
+DELETE Production.Example_ProductProductPhoto
+
+-- Repopulate the Example_ProductProductPhoto table
+INSERT Production.Example_ProductProductPhoto
+SELECT *
+FROM Production.ProductProductPhoto
+
+DELETE Production.Example_ProductProductPhoto
+WHERE ProductID NOT IN
+(SELECT ProductID
+FROM Production.Product)
+
+DELETE Production.ProductProductPhoto
+FROM Production.Example_ProductProductPhoto ppp
+LEFT OUTER JOIN Production.Product p ON
+ppp.ProductID = p.ProductID
+WHERE p.ProductID IS NULL
+
+-- Truncating a Table
+
+-- First populating the example
+SELECT *
+INTO Sales.Example_Store
+FROM Sales.Store
+
+-- Next, truncating ALL rows from the example table
+TRUNCATE TABLE Sales.Example_Store
+
+SELECT COUNT(*)
+FROM Sales.Example_Store
+
+USE AdventureWorks
+GO
+
+SELECT *
+INTO Production.Example_BillOfMaterials
+FROM Production.BillOfMaterials
+
+WHILE (SELECT COUNT(*)FROM Production.Example_BillOfMaterials)> 0
+BEGIN
+DELETE TOP(500)
+FROM Production.Example_BillOfMaterials
+END
+
+-- Executing INSERTs,UPDATEs, and DELETEs in a Single Statement
+
+CREATE TABLE HumanResources.CorporateHousing
+(CorporateHousingID int NOT NULL PRIMARY KEY IDENTITY(1,1),
+UnitNBR int NOT NULL,
+IsRentedIND bit NOT NULL,
+ModifiedDate datetime NOT NULL DEFAULT GETDATE())
+GO
+
+-- Insert existing units
+INSERT HumanResources.CorporateHousing
+(UnitNBR, IsRentedIND)
+VALUES
+(1, 0),
+(24, 1),
+(39, 0),
+(54, 1)
+
+CREATE TABLE dbo.StagingCorporateHousing
+(UnitNBR int NOT NULL,
+IsRentedIND bit NOT NULL)
+GO
+
+INSERT dbo.StagingCorporateHousing
+(UnitNBR, IsRentedIND)
+VALUES
+-- UnitNBR "1" no longer exists
+(24, 0), -- UnitNBR 24 has a changed rental status
+(39, 1), -- UnitNBR 39 is the same
+(54, 0), -- UnitNBR 54 has a change status
+(92, 1) -- UnitNBR 92 is a new unit, and isn't in production yet
+
+-- Before the MERGE
+SELECT CorporateHousingID, UnitNBR, IsRentedIND
+FROM HumanResources.CorporateHousing
+
+MERGE INTO HumanResources.CorporateHousing p
+USING dbo.StagingCorporateHousing s
+ON p.UnitNBR = s.UnitNBR
+WHEN MATCHED AND s.IsRentedIND <> p.IsRentedIND THEN
+UPDATE SET IsRentedIND = s.IsRentedIND
+WHEN NOT MATCHED BY TARGET THEN
+INSERT (UnitNBR, IsRentedIND) VALUES (s.UnitNBR, s.IsRentedIND)
+WHEN NOT MATCHED BY SOURCE THEN
+DELETE;
+
+-- After the MERGE
+SELECT CorporateHousingID, UnitNBR, IsRentedIND
+FROM HumanResources.CorporateHousing
+
+-- Returning Rows Affected by a Data Modification Statement
+
+DECLARE @ProductChanges TABLE
+(DeletedName nvarchar(50),
+InsertedName nvarchar(50))
+
+UPDATE Production.Product
+SET Name = 'HL Spindle/Axle XYZ'
+OUTPUT DELETED.Name,
+INSERTED.Name
+INTO @ProductChanges
+WHERE ProductID = 524
+
+SELECT DeletedName,
+InsertedName
+FROM @ProductChanges
+
+SELECT *
+INTO Sales.Example_SalesTaxRate
+FROM Sales.SalesTaxRate
+
+DECLARE @SalesTaxRate TABLE(
+[SalesTaxRateID] [int] NOT NULL,
+[StateProvinceID] [int] NOT NULL,
+[TaxType] [tinyint] NOT NULL,
+[TaxRate] [smallmoney] NOT NULL,
+[Name] [dbo]. [Name] NOT NULL,
+[rowguid] [uniqueidentifier] ,
+[ModifiedDate] [datetime] NOT NULL )
+
+DELETE Sales.Example_SalesTaxRate
+OUTPUT DELETED.*
+INTO @SalesTaxRate
+
+SELECT SalesTaxRateID,
+Name
+FROM @SalesTaxRate
+
+DECLARE @NewDepartment TABLE
+(DepartmentID smallint NOT NULL,
+Name nvarchar(50) NOT NULL,
+GroupName nvarchar(50) NOT NULL,
+ModifiedDate datetime NOT NULL)
+
+INSERT HumanResources.Department
+(Name, GroupName)
+OUTPUT INSERTED.*
+INTO @NewDepartment
+VALUES ('Accounts Receivable', 'Accounting')
+
+SELECT DepartmentID,
+ModifiedDate
+FROM @NewDepartment
+
+-- Asynchronously Capturing Table Data Modifications
+
+IF NOT EXISTS (SELECT name
+FROM sys.databases
+WHERE name = 'TSQLRecipe_CDC_Demo')
+BEGIN
+CREATE DATABASE TSQLRecipe_CDC_Demo
+END
+GO
+
+SELECT is_cdc_enabled
+FROM sys.databases
+WHERE name = 'TSQLRecipe_CDC_Demo'
+
+USE TSQLRecipe_CDC_Demo
+GO
+
+EXEC sys.sp_cdc_enable_db
+GO
+
+SELECT is_cdc_enabled
+FROM sys.databases
+WHERE name = 'TSQLRecipe_CDC_Demo'
+
+USE TSQLRecipe_CDC_Demo
+GO
+
+CREATE TABLE dbo.Equipment
+(EquipmentID int NOT NULL PRIMARY KEY IDENTITY(1,1),
+EquipmentDESC varchar(100) NOT NULL,
+LocationID int NOT NULL)
+GO
+
+EXEC sys.sp_cdc_enable_table
+@source_schema = 'dbo',
+@source_name = 'Equipment',
+@role_name = NULL,
+@capture_instance = NULL,
+@supports_net_changes = 1,
+@index_name = NULL,
+@captured_column_list = NULL,
+@filegroup_name = default
+
+SELECT is_tracked_by_cdc
+FROM sys.tables
+WHERE name = 'Equipment' and
+schema_id = SCHEMA_ID('dbo')
+
+EXEC sys.sp_cdc_help_change_data_capture 'dbo', 'Equipment'
+
+-- Querying All Changes from CDC Tables
+
+USE TSQLRecipe_CDC_Demo
+GO
+
+INSERT dbo.Equipment
+(EquipmentDESC, LocationID)
+VALUES ('Projector A', 22)
+
+INSERT dbo.Equipment
+(EquipmentDESC, LocationID)
+VALUES ('HR File Cabinet', 3)
+
+UPDATE dbo.Equipment
+SET EquipmentDESC = 'HR File Cabinet 1'
+WHERE EquipmentID = 2
+
+DELETE dbo.Equipment
+WHERE EquipmentID = 1
+
+SELECT sys.fn_cdc_map_time_to_lsn
+( 'smallest greater than or equal' , '2008-03-16 09:34:11') as BeginLSN
+
+SELECT sys.fn_cdc_map_time_to_lsn
+( 'largest less than or equal' , '2008-03-16 23:59:59') as EndLSN
+
+DECLARE @FromLSN varbinary(10) =
+sys.fn_cdc_map_time_to_lsn
+( 'smallest greater than or equal' , '2008-03-16 09:34:11')
+
+DECLARE @ToLSN varbinary(10) =
+sys.fn_cdc_map_time_to_lsn
+( 'largest less than or equal' , '2008-03-16 23:59:59')
+
+SELECT
+__$operation,
+__$update_mask,
+EquipmentID,
+EquipmentDESC,
+LocationID
+FROM cdc.fn_cdc_get_all_changes_dbo_Equipment
+(@FromLSN, @ToLSN, 'all')
+
+DECLARE @FromLSN varbinary(10) =
+sys.fn_cdc_map_time_to_lsn
+( 'smallest greater than or equal' , '2008-03-16 09:34:11')
+
+DECLARE @ToLSN varbinary(10) =
+sys.fn_cdc_map_time_to_lsn
+( 'largest less than or equal' , '2008-03-16 23:59:59')
+
+SELECT
+CASE __$operation
+WHEN 1 THEN 'DELETE'
+WHEN 2 THEN 'INSERT'
+WHEN 3 THEN 'Before UPDATE'
+WHEN 4 THEN 'After UPDATE'
+END Operation,
+__$update_mask,
+EquipmentID,
+EquipmentDESC,
+LocationID
+FROM cdc.fn_cdc_get_all_changes_dbo_Equipment
+(@FromLSN, @ToLSN, 'all update old')
+
+-- Querying Net Changes from CDC Tables
+
+INSERT dbo.Equipment
+(EquipmentDESC, LocationID)
+VALUES
+('Portable White Board', 18)
+
+UPDATE dbo.Equipment
+SET LocationID = 1
+WHERE EquipmentID = 3
+
+DECLARE @FromLSN varbinary(10) =
+sys.fn_cdc_map_time_to_lsn
+( 'smallest greater than or equal' , '2008-03-16 09:45:00')
+
+DECLARE @ToLSN varbinary(10) =
+sys.fn_cdc_map_time_to_lsn
+( 'largest less than or equal' , '2008-03-16 23:59:59')
+
+SELECT
+CASE __$operation
+WHEN 1 THEN 'DELETE'
+WHEN 2 THEN 'INSERT'
+WHEN 3 THEN 'Before UPDATE'
+WHEN 4 THEN 'After UPDATE'
+WHEN 5 THEN 'MERGE'
+END Operation,
+__$update_mask,
+EquipmentID,
+EquipmentDESC,
+LocationID
+FROM cdc.fn_cdc_get_net_changes_dbo_Equipment
+(@FromLSN, @ToLSN, 'all with mask')
+
+-- Translating the CDC Update Mask
+
+UPDATE dbo.Equipment
+SET EquipmentDESC = 'HR File Cabinet A1'
+WHERE EquipmentID = 2
+
+UPDATE dbo.Equipment
+SET LocationID = 35
+WHERE EquipmentID = 3
+
+DECLARE @FromLSN varbinary(10) =
+sys.fn_cdc_map_time_to_lsn
+( 'smallest greater than or equal' , '2008-03-16 10:02:00')
+
+DECLARE @ToLSN varbinary(10) =
+sys.fn_cdc_map_time_to_lsn
+( 'largest less than or equal' , '2008-03-16 23:59:59')
+
+SELECT
+sys.fn_cdc_is_bit_set (
+sys.fn_cdc_get_column_ordinal (
+'dbo_Equipment' , 'EquipmentDESC' ),
+__$update_mask) EquipmentDESC_Updated,
+sys.fn_cdc_is_bit_set (
+sys.fn_cdc_get_column_ordinal (
+'dbo_Equipment' , 'LocationID' ),
+__$update_mask) LocationID_Updated,
+EquipmentID,
+EquipmentDESC,
+LocationID
+FROM cdc.fn_cdc_get_all_changes_dbo_Equipment
+(@FromLSN, @ToLSN, 'all')
+WHERE __$operation = 4
+
+-- Working with LSN Boundaries
+
+SELECT sys.fn_cdc_get_min_lsn ('dbo_Equipment') Min_LSN
+
+SELECT sys.fn_cdc_get_max_lsn () Max_LSN
+
+SELECT sys.fn_cdc_increment_lsn (sys.fn_cdc_get_max_lsn()) New_Lower_Bound_LSN
+
+SELECT sys.fn_cdc_decrement_lsn (sys.fn_cdc_get_max_lsn())
+New_Lower_Bound_Minus_one_LSN
+
+-- Disabling Change Data Capture from Tables and the Database
+
+EXEC sys.sp_cdc_disable_table 'dbo', 'Equipment', 'all'
+
+SELECT is_tracked_by_cdc
+FROM sys.tables
+WHERE name = 'Equipment' and
+schema_id = SCHEMA_ID('dbo')
+
+EXEC sys.sp_cdc_disable_db
+
+-- Tracking Net Data Changes with Minimal Disk Overhead
+
+IF NOT EXISTS (SELECT name
+FROM sys.databases
+WHERE name = 'TSQLRecipeChangeTrackDemo')
+BEGIN
+CREATE DATABASE TSQLRecipeChangeTrackDemo
+END
+GO
+
+ALTER DATABASE TSQLRecipeChangeTrackDemo
+SET CHANGE_TRACKING = ON
+(CHANGE_RETENTION = 36 HOURS,
+AUTO_CLEANUP = ON)
+
+ALTER DATABASE TSQLRecipeChangeTrackDemo
+SET ALLOW_SNAPSHOT_ISOLATION ON
+GO
+
+SELECT DB_NAME(database_id) DBNM,is_auto_cleanup_on,
+retention_period,retention_period_units_desc
+FROM sys.change_tracking_databases
+
+USE TSQLRecipeChangeTrackDemo
+GO
+
+CREATE TABLE dbo.BookStore
+(BookStoreID int NOT NULL IDENTITY(1,1) PRIMARY KEY CLUSTERED,
+BookStoreNM varchar(30) NOT NULL,
+TechBookSection bit NOT NULL)
+GO
+
+ALTER TABLE dbo.BookStore
+ENABLE CHANGE_TRACKING
+WITH (TRACK_COLUMNS_UPDATED = ON)
+
+SELECT OBJECT_NAME(object_id) ObjNM,is_track_columns_updated_on
+FROM sys.change_tracking_tables
+
+INSERT dbo.BookStore
+(BookStoreNM, TechBookSection)
+VALUES
+('McGarnicles and Bailys', 1),
+('Smith Book Store', 0),
+('University Book Store',1)
+
+SELECT CHANGE_TRACKING_CURRENT_VERSION ()
+
+SELECT CHANGE_TRACKING_MIN_VALID_VERSION
+( OBJECT_ID('dbo.BookStore') )
+
+SELECT BookStoreID,SYS_CHANGE_OPERATION,
+SYS_CHANGE_VERSION
+FROM CHANGETABLE
+(CHANGES dbo.BookStore, 0) AS CT
+
+UPDATE dbo.BookStore
+SET BookStoreNM = 'King Book Store'
+WHERE BookStoreID = 1
+
+UPDATE dbo.BookStore
+SET TechBookSection = 1
+WHERE BookStoreID = 2
+
+DELETE dbo.BookStore
+WHERE BookStoreID = 3
+
+SELECT CHANGE_TRACKING_CURRENT_VERSION ()
+
+SELECT BookStoreID,
+SYS_CHANGE_VERSION,
+SYS_CHANGE_OPERATION,
+SYS_CHANGE_COLUMNS
+FROM CHANGETABLE
+(CHANGES dbo.BookStore, 1) AS CT
+
+SELECT BookStoreID,
+CHANGE_TRACKING_IS_COLUMN_IN_MASK(
+COLUMNPROPERTY(
+OBJECT_ID('dbo.BookStore'),'BookStoreNM', 'ColumnId') ,
+SYS_CHANGE_COLUMNS) IsChanged_BookStoreNM,
+CHANGE_TRACKING_IS_COLUMN_IN_MASK(
+COLUMNPROPERTY(
+OBJECT_ID('dbo.BookStore'), 'TechBookSection', 'ColumnId') ,
+SYS_CHANGE_COLUMNS) IsChanged_TechBookSection
+FROM CHANGETABLE
+(CHANGES dbo.BookStore, 1) AS CT
+WHERE SYS_CHANGE_OPERATION = 'U'
+
+SELECT bs.BookStoreID, bs.BookStoreNM, bs.TechBookSection,
+ct.SYS_CHANGE_VERSION
+FROM dbo.BookStore bs
+CROSS APPLY CHANGETABLE
+(VERSION dbo.BookStore, (BookStoreID), (bs.BookStoreID)) as ct
+
+UPDATE dbo.BookStore
+SET BookStoreNM = 'Kingsly Book Store',
+TechBookSection = 0
+WHERE BookStoreID = 1
+
+SELECT bs.BookStoreID, bs.BookStoreNM, bs.TechBookSection,
+ct.SYS_CHANGE_VERSION
+FROM dbo.BookStore bs
+CROSS APPLY CHANGETABLE
+(VERSION BookStore, (BookStoreID), (bs.BookStoreID)) as ct
+
+SELECT CHANGE_TRACKING_CURRENT_VERSION ()
+
+DECLARE @context varbinary(128) = CAST('Apress_XYZ' as varbinary(128));
+WITH CHANGE_TRACKING_CONTEXT (@context)
+INSERT dbo.BookStore
+(BookStoreNM, TechBookSection)
+VALUES
+('Capers Book Store', 1)
+
+SELECT BookStoreID,
+SYS_CHANGE_OPERATION,
+SYS_CHANGE_VERSION,
+CAST(SYS_CHANGE_CONTEXT as varchar) ApplicationContext
+FROM CHANGETABLE
+(CHANGES dbo.BookStore, 5) AS CT
+
+
+
+
+
+
+
+
+
+

@@ -1,0 +1,296 @@
+-----------------------------------------------------------------------
+-- Source Code: SQL Server 2008 Transact-SQL Recipes, Joseph Sack
+-----------------------------------------------------------------------
+-- Do not execute the following code in a single batch.  These samples
+-- are provided in order to follow along with specific recipes.  
+-----------------------------------------------------------------------
+
+-- Using Explicit Transactions
+
+USE AdventureWorks
+GO
+
+-- Before count
+SELECT COUNT(*) BeforeCount FROM HumanResources.Department
+-- Variable to hold the latest error integer value
+
+DECLARE @Error int
+
+BEGIN TRANSACTION
+
+INSERT HumanResources.Department
+(Name, GroupName)
+VALUES ('Accounts Payable', 'Accounting')
+
+SET @Error = @@ERROR
+IF (@Error<> 0) GOTO Error_Handler
+
+INSERT HumanResources.Department
+(Name, GroupName)
+VALUES ('Engineering', 'Research and Development')
+
+SET @Error = @@ERROR
+IF (@Error <> 0) GOTO Error_Handler
+
+COMMIT TRAN
+
+Error_Handler:
+IF @Error <> 0
+BEGIN
+ROLLBACK TRANSACTION
+END
+-- After count
+
+SELECT COUNT(*) AfterCount FROM HumanResources.Department
+
+-- Displaying the Oldest Active Transaction with DBCC OPENTRAN
+
+BEGIN TRANSACTION
+
+DELETE Production.ProductProductPhoto
+WHERE ProductID = 317
+
+DBCC OPENTRAN('AdventureWorks')
+
+ROLLBACK TRAN
+
+-- Querying Transaction Information by Session
+
+SET TRANSACTION ISOLATION LEVEL SERIALIZABLE
+
+BEGIN TRAN
+
+SELECT *
+FROM HumanResources.Department
+
+INSERT HumanResources.Department
+(Name, GroupName)
+VALUES ('Test', 'QA')
+
+SELECT session_id, transaction_id, is_user_transaction, is_local
+FROM sys.dm_tran_session_transactions
+WHERE is_user_transaction = 1
+
+SELECT s.text
+FROM sys.dm_exec_connections c
+CROSS APPLY sys.dm_exec_sql_text(c.most_recent_sql_handle) s
+WHERE session_id = 54
+
+SELECT transaction_begin_time,
+CASE transaction_type
+WHEN 1 THEN 'Read/write transaction'
+WHEN 2 THEN 'Read-only transaction'
+WHEN 3 THEN 'System transaction'
+WHEN 4 THEN 'Distributed transaction'
+END tran_type,
+CASE transaction_state
+WHEN 0 THEN 'not been completely initialized yet'
+WHEN 1 THEN 'initialized but has not started'
+WHEN 2 THEN 'active'
+WHEN 3 THEN 'ended (read-only transaction)'
+WHEN 4 THEN 'commit initiated for distributed transaction'
+WHEN 5 THEN 'transaction prepared and waiting resolution'
+WHEN 6 THEN 'committed'
+WHEN 7 THEN 'being rolled back'
+WHEN 8 THEN 'been rolled back'
+END tran_state
+FROM sys.dm_tran_active_transactions
+WHERE transaction_id = 145866
+
+-- Viewing Lock Activity
+
+USE AdventureWorks
+BEGIN TRAN
+
+SELECT ProductID, ModifiedDate
+FROM Production.ProductDocument
+WITH (TABLOCKX)
+
+SELECT request_session_id sessionid,
+resource_type type,
+resource_database_id dbid,
+OBJECT_NAME(resource_associated_entity_id, resource_database_id) objectname,
+request_mode rmode,
+request_status rstatus
+FROM sys.dm_tran_locks
+WHERE resource_type IN ('DATABASE', 'OBJECT')
+
+-- Controlling a Table’s Lock Escalation Behavior
+
+ALTER TABLE Person.Address
+SET ( LOCK_ESCALATION = AUTO )
+
+SELECT lock_escalation,lock_escalation_desc
+FROM sys.tables
+
+ALTER TABLE Person.Address
+SET ( LOCK_ESCALATION = DISABLE)
+
+SELECT lock_escalation,lock_escalation_desc
+FROM sys.tables
+
+-- Configuring a Session’s Transaction Locking Behavior
+
+USE AdventureWorks
+GO
+SET TRANSACTION ISOLATION LEVEL SERIALIZABLE
+GO
+BEGIN TRAN
+
+SELECT AddressTypeID, Name
+FROM Person.AddressType
+WHERE AddressTypeID BETWEEN 1 AND 6
+
+SELECT resource_associated_entity_id, resource_type,
+request_mode, request_session_id
+FROM sys.dm_tran_locks
+
+COMMIT TRAN
+
+SET TRANSACTION ISOLATION LEVEL READ UNCOMMITTED
+GO
+
+BEGIN TRAN
+
+SELECT AddressTypeID, Name
+FROM Person.AddressType
+WHERE AddressTypeID BETWEEN 1 AND 6
+
+SELECT resource_associated_entity_id, resource_type,
+request_mode, request_session_id
+FROM sys.dm_tran_locks
+
+COMMIT TRAN
+
+ALTER DATABASE AdventureWorks
+SET ALLOW_SNAPSHOT_ISOLATION ON
+GO
+
+USE AdventureWorks
+GO
+
+SET TRANSACTION ISOLATION LEVEL SNAPSHOT
+GO
+
+BEGIN TRAN
+
+SELECT CurrencyRateID,
+EndOfDayRate
+FROM Sales.CurrencyRate
+WHERE CurrencyRateID = 8317
+
+USE AdventureWorks
+GO
+
+UPDATE Sales.CurrencyRate
+SET EndOfDayRate = 1.00
+WHERE CurrencyRateID = 8317
+
+SELECT CurrencyRateID,
+EndOfDayRate
+FROM Sales.CurrencyRate
+WHERE CurrencyRateID = 8317
+
+COMMIT TRAN
+
+SELECT CurrencyRateID,
+EndOfDayRate
+FROM Sales.CurrencyRate
+WHERE CurrencyRateID = 8317
+
+-- Identifying and Resolving Blocking Issues
+
+BEGIN TRAN
+
+UPDATE Production.ProductInventory
+SET Quantity = 400
+WHERE ProductID = 1 AND
+
+BEGIN TRAN
+
+UPDATE Production.ProductInventory
+SET Quantity = 406
+WHERE ProductID = 1 AND
+
+SELECT blocking_session_id, wait_duration_ms, session_id
+FROM sys.dm_os_waiting_tasks
+WHERE blocking_session_id IS NOT NULL
+
+SELECT t.text
+FROM sys.dm_exec_connections c
+CROSS APPLY sys.dm_exec_sql_text (c.most_recent_sql_handle) t
+WHERE c.session_id = 54
+
+-- Configuring How Long a Statement Will Wait for a Lock to Be Released
+
+BEGIN TRAN
+
+UPDATE Production.ProductInventory
+SET Quantity = 400
+WHERE ProductID = 1 AND
+LocationID = 1
+
+SET LOCK_TIMEOUT 1000
+
+UPDATE Production.ProductInventory
+SET Quantity = 406
+WHERE ProductID = 1 AND
+LocationID = 1
+
+-- Identifying Deadlocks with a Trace Flag
+
+SET NOCOUNT ON
+SET TRANSACTION ISOLATION LEVEL SERIALIZABLE
+WHILE 1=1
+BEGIN
+BEGIN TRAN
+UPDATE Purchasing.Vendor
+SET CreditRating = 1
+WHERE BusinessEntityID = 1494
+UPDATE Purchasing.Vendor
+SET CreditRating = 2
+WHERE BusinessEntityID = 1492
+COMMIT TRAN
+END
+
+SET NOCOUNT ON
+SET TRANSACTION ISOLATION LEVEL SERIALIZABLE
+WHILE 1=1
+BEGIN
+BEGIN TRAN
+UPDATE Purchasing.Vendor
+SET CreditRating = 2
+WHERE BusinessEntityID = 1492
+UPDATE Purchasing.Vendor
+SET CreditRating = 1
+WHERE BusinessEntityID = 1494
+COMMIT TRAN
+END
+
+DBCC TRACEON (1222, -1)
+GO
+DBCC TRACESTATUS
+
+DBCC TRACEOFF (1222, -1)
+GO
+DBCC TRACESTATUS
+
+-- Setting Deadlock Priority
+
+SET NOCOUNT ON
+SET TRANSACTION ISOLATION LEVEL SERIALIZABLE
+SET DEADLOCK_PRIORITY LOW
+
+BEGIN TRAN
+
+UPDATE Purchasing.Vendor
+SET CreditRating = 1
+WHERE BusinessEntityID = 2
+
+UPDATE Purchasing.Vendor
+SET CreditRating = 2
+WHERE BusinessEntityID = 1
+
+COMMIT TRAN
+
+

@@ -1,0 +1,264 @@
+-----------------------------------------------------------------------
+-- Source Code: SQL Server 2008 Transact-SQL Recipes, Joseph Sack
+-----------------------------------------------------------------------
+-- Do not execute the following code in a single batch.  These samples
+-- are provided in order to follow along with specific recipes.  
+-----------------------------------------------------------------------
+
+-- Creating a Windows Login
+
+CREATE LOGIN [CAESAR\Livia]
+FROM WINDOWS
+WITH DEFAULT_DATABASE = AdventureWorks,
+DEFAULT_LANGUAGE = English
+
+CREATE LOGIN [CAESAR\Senators]
+FROM WINDOWS
+WITH DEFAULT_DATABASE= AdventureWorks
+
+-- Viewing Windows Logins
+
+SELECT name, sid
+FROM sys.server_principals
+WHERE type_desc IN ('WINDOWS_LOGIN', 'WINDOWS_GROUP')
+ORDER BY type_desc
+
+-- Altering a Windows Login
+
+ALTER LOGIN [CAESAR\Livia]
+DISABLE
+
+ALTER LOGIN [CAESAR\Livia]
+ENABLE
+
+ALTER LOGIN [CAESAR\Senators]
+WITH DEFAULT_DATABASE = master
+
+-- Dropping a Windows Login
+
+-- Windows Group login
+DROP LOGIN [CAESAR\Senators]
+
+-- Windows user login
+DROP LOGIN [CAESAR\Livia]
+
+-- Denying SQL Server Access to aWindows User or Group
+
+USE [master]
+GO
+DENY CONNECT SQL TO [CAESAR\Helen]
+GO
+
+USE [master]
+GO
+GRANT CONNECT SQL TO [CAESAR\Helen]
+GO
+
+-- Creating a SQL Server Login
+
+CREATE LOGIN Veronica
+WITH PASSWORD = 'InfernoII',
+DEFAULT_DATABASE = AdventureWorks
+
+CREATE LOGIN Trishelle
+WITH PASSWORD = 'ChangeMe' MUST_CHANGE ,
+CHECK_EXPIRATION = ON,
+CHECK_POLICY = ON
+
+-- Viewing SQL Server Logins
+
+SELECT name, sid
+FROM sys.server_principals
+WHERE type_desc IN ('SQL_LOGIN')
+ORDER BY name
+
+-- Altering a SQL Server Login
+
+ALTER LOGIN Veronica
+WITH PASSWORD = 'InfernoIII'
+OLD_PASSWORD = 'InfernoII'
+
+ALTER LOGIN Veronica
+WITH DEFAULT_DATABASE = [AdventureWorks]
+
+ALTER LOGIN Veronica
+WITH NAME = Angela,
+PASSWORD = 'BOS2004'
+
+-- Managing a Login’s Password
+
+SELECT LOGINPROPERTY('Angela', 'IsLocked') IsLocked,
+LOGINPROPERTY('Angela', 'IsExpired') IsExpired,
+LOGINPROPERTY('Angela', 'IsMustChange') IsMustChange,
+LOGINPROPERTY('Angela', 'BadPasswordCount') BadPasswordCount,
+LOGINPROPERTY('Angela', 'BadPasswordTime') BadPasswordTime,
+LOGINPROPERTY('Angela', 'HistoryLength') HistoryLength,
+LOGINPROPERTY('Angela', 'LockoutTime') LockoutTime,
+LOGINPROPERTY('Angela', 'PasswordLastSetTime') PasswordLastSetTime,
+LOGINPROPERTY('Angela', 'PasswordHash') PasswordHash
+
+-- Dropping a SQL Login
+
+DROP LOGIN Angela
+
+-- Managing Server RoleMembers
+
+CREATE LOGIN Veronica
+WITH PASSWORD = 'PalmTree1'
+GO
+
+EXEC master..sp_addsrvrolemember
+'Veronica',
+'sysadmin'
+GO
+
+EXEC master..sp_dropsrvrolemember
+'Veronica',
+'sysadmin'
+GO
+
+-- Reporting Fixed Server Role Information
+
+SELECT name
+FROM sys.server_principals
+WHERE type_desc = 'SERVER_ROLE'
+
+EXEC sp_helpsrvrole
+
+EXEC sp_helpsrvrolemember 'sysadmin'
+
+
+
+-- Creating Database Users
+
+IF NOT EXISTS (SELECT name
+FROM sys.databases
+WHERE name = 'TestDB')
+BEGIN
+CREATE DATABASE TestDB
+END
+GO
+
+USE TestDB
+GO
+CREATE USER Veronica
+
+USE TestDB
+GO
+
+CREATE USER Helen
+FOR LOGIN [CAESAR\Helen]
+WITH DEFAULT_SCHEMA = HumanResources
+
+
+-- Reporting Database User Information
+
+EXEC sp_helpuser 'Veronica'
+
+-- Modifying a Database User
+
+USE TestDB
+GO
+
+ALTER USER Helen
+WITH DEFAULT_SCHEMA = Production
+
+USE TestDB
+GO
+
+ALTER USER Veronica
+WITH NAME = VSanders
+
+-- Removing a Database User from the Database
+
+USE TestDB
+GO
+
+DROP USER VSanders
+
+-- Fixing Orphaned Database Users
+
+SELECT dp.name OrphanUser, dp.sid OrphanSid
+FROM sys.database_principals dp
+LEFT OUTER JOIN sys.server_principals sp ON
+dp.sid = sp.sid
+WHERE sp.sid IS NULL AND
+dp.type_desc = 'SQL_USER' AND
+dp.principal_id > 4
+
+ALTER USER Sonja
+WITH LOGIN = Sonja
+
+ALTER USER [Helen]
+WITH LOGIN = [CAESAR\Helen]
+
+-- Reporting Fixed Database Roles Information
+
+EXEC sp_helpdbfixedrole
+
+EXEC sp_helprolemember
+
+-- Managing Fixed Database Role Membership
+
+USE TestDB
+GO
+EXEC sp_addrolemember 'db_datawriter', 'Helen'
+EXEC sp_addrolemember 'db_datareader', 'Helen'
+
+USE TestDB
+GO
+EXEC sp_droprolemember 'db_datawriter', 'Helen'
+
+-- Managing User-Defined Database Roles
+
+USE AdventureWorks
+GO
+CREATE ROLE HR_ReportSpecialist AUTHORIZATION db_owner
+
+GRANT SELECT ON HumanResources.Employee TO HR_ReportSpecialist
+
+EXEC sp_addrolemember 'HR_ReportSpecialist',
+'Veronica'
+GO
+
+ALTER ROLE HR_ReportSpecialist WITH NAME = HumanResources_RS
+
+DROP ROLE HumanResources_RS
+
+EXEC sp_droprolemember 'HumanResources_RS',
+'Veronica'
+GO
+
+DROP ROLE HumanResources_RS
+
+-- Managing Application Roles
+
+USE AdventureWorks
+GO
+CREATE APPLICATION ROLE DataWareHouseApp
+WITH PASSWORD = 'mywarehouse123!',
+DEFAULT_SCHEMA = dbo
+
+-- Now grant this application role permissions
+GRANT SELECT ON Sales.vSalesPersonSalesByFiscalYears
+TO DataWareHouseApp
+
+EXEC sp_setapprole 'DataWareHouseApp', -- App role name
+'mywarehouse123!' -- Password
+
+-- Works
+SELECT COUNT(*)
+FROM Sales.vSalesPersonSalesByFiscalYears
+
+-- Doesn't work
+SELECT COUNT(*)
+FROM HumanResources.vJobCandidate
+
+ALTER APPLICATION ROLE DataWareHouseApp
+WITH NAME = DW_App, PASSWORD = 'newsecret!123'
+
+DROP APPLICATION ROLE DW_App
+
+
+
+

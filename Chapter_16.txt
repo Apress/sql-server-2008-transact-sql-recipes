@@ -1,0 +1,176 @@
+-----------------------------------------------------------------------
+-- Source Code: SQL Server 2008 Transact-SQL Recipes, Joseph Sack
+-----------------------------------------------------------------------
+-- Do not execute the following code in a single batch.  These samples
+-- are provided in order to follow along with specific recipes.  
+-----------------------------------------------------------------------
+
+-- Viewing System Error Information
+
+SELECT message_id, severity, is_event_logged, text
+FROM sys.messages
+ORDER BY severity DESC, text
+
+-- Creating a User-Defined Error Message
+
+-- Creating the new message
+USE master
+GO
+EXEC sp_addmessage
+100001,
+14,
+N'The current table %s is not updateable by your group!'
+GO
+
+-- Using the new message (RAISERROR reviewed in the next recipe)
+RAISERROR (100001, 14, 1, N'HumanResources.Employee')
+
+-- Dropping a User-Defined Error Message
+
+EXEC sp_dropmessage 100001
+
+-- Invoking an Error Message
+
+USE AdventureWorks
+GO
+
+CREATE PROCEDURE dbo.usp_INS_Department
+@DepartmentName nvarchar(50),
+@GroupName nvarchar(50)
+AS
+IF @GroupName = 'Research and Development'
+BEGIN
+INSERT HumanResources.Department
+(Name, GroupName)
+VALUES (@DepartmentName, @GroupName)
+END
+ELSE
+BEGIN
+RAISERROR('%s group is being audited
+for the next %i days.
+No new departments for this group can be added
+during this time.',
+16,
+1,
+@GroupName,
+23)
+END
+GO
+
+EXEC dbo.usp_INS_Department 'Mainframe Accountant', 'Accounting'
+
+EXEC sp_addmessage
+100002,
+14,
+N'%s group is being audited for the next %i
+days. No new departments for this group can be added
+during this time.'
+GO
+
+-- Old-Style Error Handling
+
+DECLARE @ErrorNBR int
+
+BEGIN TRAN
+
+INSERT Production.Location
+(Name, CostRate, Availability)
+VALUES
+('Tool Verification', 0.00, 0.00)
+
+SELECT @ErrorNBR = @@ERROR
+
+IF @ErrorNBR <> 0
+GOTO UndoTran
+
+INSERT Production.Location
+(Name, CostRate, Availability)
+VALUES
+('Frame Forming', 0.00, 0.00)
+
+SELECT @ErrorNBR = @@ERROR
+
+IF @ErrorNBR <> 0
+GOTO UndoTran
+
+COMMIT TRAN
+
+UndoTran:
+IF @ErrorNBR <> 0
+BEGIN
+PRINT CAST(@ErrorNBR as varchar(6)) +
+' occurred after an attempt to insert into Production.Location'
+ROLLBACK TRAN
+END
+
+-- Error Handling with TRY...CATCH
+
+BEGIN TRY
+
+BEGIN TRAN
+
+INSERT Production.Location
+(Name, CostRate, Availability)
+VALUES
+('Tool Verification', 0.00, 0.00)
+
+INSERT Production.Location
+(Name, CostRate, Availability)
+VALUES
+('Frame Forming', 0.00, 0.00)
+
+COMMIT TRANSACTION
+
+END TRY
+
+BEGIN CATCH
+
+SELECT ERROR_NUMBER() ErrorNBR, ERROR_SEVERITY() Severity,
+ERROR_LINE () ErrorLine, ERROR_MESSAGE() Msg
+
+ROLLBACK TRANSACTION
+
+END CATCH
+
+-- Applying Error Handling Without Recoding a Stored Procedure
+
+CREATE PROCEDURE usp_SEL_DivideByZero
+AS
+SELECT 1/0
+GO
+
+BEGIN TRY
+EXEC dbo.usp_SEL_DivideByZero
+END TRY
+BEGIN CATCH
+SELECT ERROR_NUMBER() ErrorNBR, ERROR_SEVERITY() Severity,
+ERROR_LINE () ErrorLine, ERROR_MESSAGE() Msg
+PRINT 'This stored procedure did not execute properly.'
+END CATCH
+
+-- Nesting Error Handling
+
+CREATE PROCEDURE dbo.usp_INS_Department
+@Name nvarchar(50),
+@GroupName nvarchar(50)
+AS
+BEGIN TRY
+INSERT HumanResources.Department (Name, GroupName)
+VALUES (@Name, @GroupName)
+END TRY
+BEGIN CATCH
+BEGIN TRY
+PRINT 'The first department attempt failed.'
+INSERT HumanResources.Department (Name, GroupName)
+VALUES ('Misc', @GroupName)
+END TRY
+BEGIN CATCH
+PRINT 'A Misc department for that group already exists.'
+END CATCH
+END CATCH
+GO
+
+EXEC dbo.usp_INS_Department 'Engineering', 'Research and Development'
+
+EXEC dbo.usp_INS_Department 'Engineering', 'Research and Development'
+

@@ -1,0 +1,206 @@
+-----------------------------------------------------------------------
+-- Source Code: SQL Server 2008 Transact-SQL Recipes, Joseph Sack
+-----------------------------------------------------------------------
+-- Do not execute the following code in a single batch.  These samples
+-- are provided in order to follow along with specific recipes.  
+-----------------------------------------------------------------------
+
+-- Creating a Table Index
+
+USE AdventureWorks
+GO
+
+CREATE TABLE HumanResources.TerminationReason(
+TerminationReasonID smallint IDENTITY(1,1) NOT NULL,
+TerminationReason varchar(50) NOT NULL,
+DepartmentID smallint NOT NULL,
+CONSTRAINT FK_TerminationReason_DepartmentID
+FOREIGN KEY (DepartmentID) REFERENCES
+HumanResources.Department(DepartmentID)
+)
+GO
+
+ALTER TABLE HumanResources.TerminationReason
+ADD CONSTRAINT PK_TerminationReason PRIMARY KEY CLUSTERED (TerminationReasonID)
+
+CREATE NONCLUSTERED INDEX NCI_TerminationReason_DepartmentID ON
+HumanResources.TerminationReason (DepartmentID)
+
+-- Enforcing Uniqueness on Non-Key Columns
+
+INSERT HumanResources.TerminationReason
+(DepartmentID, TerminationReason)
+VALUES (1, 'Bad Engineering Skills')
+
+INSERT HumanResources.TerminationReason
+(DepartmentID, TerminationReason)
+VALUES (2, 'Breaks Expensive Tools')
+
+INSERT HumanResources.TerminationReason
+(DepartmentID, TerminationReason)
+VALUES (2, 'Bad Engineering Skills')
+
+SELECT TerminationReasonID, TerminationReason, DepartmentID
+FROM HumanResources.TerminationReason
+
+-- Creating an Index on Multiple Columns
+
+CREATE NONCLUSTERED INDEX NI_TerminationReason_TerminationReason_DepartmentID
+ON HumanResources.TerminationReason(TerminationReason, DepartmentID)
+
+-- Defining Index Column Sort Direction
+
+ALTER TABLE HumanResources.TerminationReason
+ADD ViolationSeverityLevel smallint
+GO
+
+CREATE NONCLUSTERED INDEX NI_TerminationReason_ViolationSeverityLevel
+ON HumanResources.TerminationReason (ViolationSeverityLevel DESC)
+
+-- Viewing IndexMeta Data
+
+EXEC sp_helpindex 'HumanResources.Employee'
+
+SELECT SUBSTRING(name, 1,30) index_name,
+allow_row_locks,
+allow_page_locks,
+is_disabled,
+fill_factor,
+has_filter
+FROM sys.indexes
+WHERE object_id = OBJECT_ID('HumanResources.Employee')
+
+-- Disabling an Index
+
+ALTER INDEX UNI_TerminationReason ON
+HumanResources.TerminationReason DISABLE
+
+-- Dropping Indexes
+
+DROP INDEX HumanResources.TerminationReason.UNI_TerminationReason
+
+-- Changing an Existing Index with DROP_EXISTING
+
+CREATE NONCLUSTERED INDEX NCI_TerminationReason_DepartmentID ON
+HumanResources.TerminationReason
+(DepartmentID ASC)
+WITH (DROP_EXISTING = ON)
+GO
+
+CREATE NONCLUSTERED INDEX NCI_TerminationReason_DepartmentID ON
+HumanResources.TerminationReason
+(ViolationSeverityLevel, DepartmentID DESC)
+WITH (DROP_EXISTING = ON)
+GO
+
+-- Intermediate Index Creation in Tempdb
+
+CREATE NONCLUSTERED INDEX NI_Address_PostalCode ON
+Person.Address (PostalCode)
+WITH (SORT_IN_TEMPDB = ON)
+
+-- Controlling Parallel Plan Execution for Index Creation
+
+CREATE NONCLUSTERED INDEX NI_Address_AddressLine1 ON
+Person.Address (AddressLine1)
+WITH (MAXDOP = 4)
+
+-- Allowing User Table Access During Index Creation
+
+CREATE NONCLUSTERED INDEX NCI_ProductVendor_MinOrderQty ON
+Purchasing.ProductVendor(MinOrderQty)
+WITH (ONLINE = ON)
+
+-- Using an Index INCLUDE
+
+ALTER TABLE HumanResources.TerminationReason
+ADD LegalDescription varchar(max)
+
+DROP INDEX
+HumanResources.TerminationReason.NI_TerminationReason_TerminationReason_DepartmentID
+
+CREATE NONCLUSTERED INDEX NI_TerminationReason_TerminationReason_DepartmentID
+ON HumanResources.TerminationReason (TerminationReason, DepartmentID)
+INCLUDE (LegalDescription)
+
+-- Using PAD_INDEX and FILLFACTOR
+
+DROP INDEX
+HumanResources.TerminationReason.NI_TerminationReason_TerminationReason_DepartmentID
+
+CREATE NONCLUSTERED INDEX NI_TerminationReason_TerminationReason_DepartmentID
+ON HumanResources.TerminationReason
+(TerminationReason ASC, DepartmentID ASC)
+WITH (PAD_INDEX=ON, FILLFACTOR=50)
+
+-- Disabling Page and/or Row Index Locking
+
+-- Disable page locks. Table and row locks can still be used.
+CREATE INDEX NI_EmployeePayHistory_Rate ON
+HumanResources.EmployeePayHistory (Rate)
+WITH (ALLOW_PAGE_LOCKS=OFF)
+
+-- Disable page and row locks. Only table locks can be used.
+ALTER INDEX NI_EmployeePayHistory_Rate ON
+HumanResources.EmployeePayHistory
+SET (ALLOW_PAGE_LOCKS=OFF,ALLOW_ROW_LOCKS=OFF )
+
+-- Allow page and row locks.
+ALTER INDEX NI_EmployeePayHistory_Rate ON
+HumanResources.EmployeePayHistory
+SET (ALLOW_PAGE_LOCKS=ON,ALLOW_ROW_LOCKS=ON )
+
+-- Creating an Index on a Filegroup
+
+ALTER DATABASE AdventureWorks
+ADD FILEGROUP FG2
+
+ALTER DATABASE AdventureWorks
+ADD FILE
+( NAME = AW2,
+FILENAME = 'c:\Apress\aw2.ndf',
+SIZE = 1MB
+)
+TO FILEGROUP FG2
+
+CREATE INDEX NI_ProductPhoto_ThumnailPhotoFileName ON
+Production.ProductPhoto (ThumbnailPhotoFileName)
+ON [FG2]
+
+-- Implementing Index Partitioning
+
+CREATE NONCLUSTERED INDEX NI_WebSiteHits_WebSitePage ON
+Sales.WebSiteHits (WebSitePage)
+ON [HitDateRangeScheme] (HitDate)
+
+-- Indexing a Subset of Rows
+
+SELECT SalesOrderID
+FROM Sales.SalesOrderDetail
+WHERE UnitPrice BETWEEN 150.00 AND 175.00
+
+CREATE NONCLUSTERED INDEX NCI_UnitPrice_SalesOrderDetail
+ON Sales.SalesOrderDetail(UnitPrice)
+WHERE UnitPrice >= 150.00 AND UnitPrice <= 175.00
+
+SELECT SalesOrderDetailID
+FROM Sales.SalesOrderDetail
+WHERE ProductID IN (776, 777) AND
+OrderQty > 10
+
+CREATE NONCLUSTERED INDEX NCI_ProductID_SalesOrderDetail
+ON Sales.SalesOrderDetail(ProductID,OrderQty)
+WHERE ProductID IN (776, 777)
+
+-- Reducing Index Size
+
+CREATE NONCLUSTERED INDEX NCI_SalesOrderDetail_CarrierTrackingNumber
+ON Sales.SalesOrderDetail (CarrierTrackingNumber)
+WITH (DATA_COMPRESSION = PAGE)
+
+ALTER INDEX NCI_SalesOrderDetail_CarrierTrackingNumber
+ON Sales.SalesOrderDetail
+REBUILD
+WITH (DATA_COMPRESSION = ROW)
+
+

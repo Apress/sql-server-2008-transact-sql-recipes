@@ -1,0 +1,724 @@
+-----------------------------------------------------------------------
+-- Source Code: SQL Server 2008 Transact-SQL Recipes, Joseph Sack
+-----------------------------------------------------------------------
+-- Do not execute the following code in a single batch.  These samples
+-- are provided in order to follow along with specific recipes.  
+-----------------------------------------------------------------------
+
+-- Enabling Databases for Service Broker Activity
+
+USE master
+GO
+IF NOT EXISTS (SELECT name
+FROM sys.databases
+WHERE name = 'BookStore')
+CREATE DATABASE BookStore
+GO
+IF NOT EXISTS (SELECT name
+FROM sys.databases
+WHERE name = 'BookDistribution')
+CREATE DATABASE BookDistribution
+GO
+ALTER DATABASE BookStore SET ENABLE_BROKER
+GO
+ALTER DATABASE BookStore SET TRUSTWORTHY ON
+GO
+ALTER DATABASE BookDistribution SET ENABLE_BROKER
+GO
+ALTER DATABASE BookDistribution SET TRUSTWORTHY ON
+GO
+CHAPTER 20 n SERVICE BROKER 581
+
+-- Creating the DatabaseMaster Key for Encryption
+
+USE BookStore
+GO
+CREATE MASTER KEY
+ENCRYPTION BY PASSWORD = 'D4C86597'
+GO
+
+
+USE BookDistribution
+GO
+CREATE MASTER KEY
+ENCRYPTION BY PASSWORD = '50255686DDC5'
+GO
+
+-- Managing Message Types
+
+Use BookStore
+GO
+CREATE MESSAGE TYPE [//SackConsulting/SendBookOrder]
+VALIDATION = WELL_FORMED_XML
+GO
+
+CREATE MESSAGE TYPE [//SackConsulting/BookOrderReceived]
+VALIDATION = WELL_FORMED_XML
+GO
+
+USE BookDistribution
+GO
+CREATE MESSAGE TYPE [//SackConsulting/SendBookOrder]
+VALIDATION = WELL_FORMED_XML
+GO
+
+CREATE MESSAGE TYPE [//SackConsulting/BookOrderReceived]
+VALIDATION = WELL_FORMED_XML
+GO
+
+-- Creating Contracts
+
+Use BookStore
+GO
+CREATE CONTRACT
+[//SackConsulting/BookOrderContract]
+( [//SackConsulting/SendBookOrder]
+SENT BY INITIATOR,
+[//SackConsulting/BookOrderReceived]
+SENT BY TARGET
+)
+GO
+
+USE BookDistribution
+GO
+CREATE CONTRACT
+[//SackConsulting/BookOrderContract]
+( [//SackConsulting/SendBookOrder]
+SENT BY INITIATOR,
+[//SackConsulting/BookOrderReceived]
+SENT BY TARGET
+)
+GO
+
+-- Creating Queues
+
+Use BookStore
+GO
+CREATE QUEUE BookStoreQueue
+WITH STATUS=ON
+GO
+
+USE BookDistribution
+GO
+CREATE QUEUE BookDistributionQueue
+WITH STATUS=ON
+GO
+
+-- Creating Services
+
+Use BookStore
+GO
+CREATE SERVICE [//SackConsulting/BookOrderService]
+ON QUEUE dbo.BookStoreQueue
+([//SackConsulting/BookOrderContract])
+GO
+
+USE BookDistribution
+GO
+CREATE SERVICE [//SackConsulting/BookDistributionService]
+ON QUEUE dbo.BookDistributionQueue
+([//SackConsulting/BookOrderContract])
+GO
+
+-- Initiating a Dialog
+
+Use BookStore
+GO
+DECLARE @Conv_Handler uniqueidentifier
+DECLARE @OrderMsg xml;
+
+BEGIN DIALOG CONVERSATION @Conv_Handler
+FROM SERVICE [//SackConsulting/BookOrderService]
+TO SERVICE '//SackConsulting/BookDistributionService'
+ON CONTRACT [//SackConsulting/BookOrderContract];
+SET @OrderMsg =
+'<order id="3439" customer="22" orderdate="7/15/2008">
+<LineItem ItemNumber="1" ISBN="1-59059-592-0" Quantity="1" />
+</order>';
+SEND ON CONVERSATION @Conv_Handler
+MESSAGE TYPE [//SackConsulting/SendBookOrder]
+(@OrderMsg);
+
+-- Querying the Queue for IncomingMessages
+
+USE BookDistribution
+GO
+SELECT message_type_name, CAST(message_body as xml) message,
+queuing_order, conversation_handle, conversation_group_id
+FROM dbo.BookDistributionQueue
+
+-- Receiving and Responding to aMessage
+
+USE BookDistribution
+GO
+CREATE TABLE dbo.BookOrderReceived
+(BookOrderReceivedID int IDENTITY (1,1) NOT NULL,
+conversation_handle uniqueidentifier NOT NULL,
+conversation_group_id uniqueidentifier NOT NULL,
+message_body xml NOT NULL)
+GO
+
+-- Declare the local variables needed to hold the incoming message data
+DECLARE @Conv_Handler uniqueidentifier
+DECLARE @Conv_Group uniqueidentifier
+DECLARE @OrderMsg xml
+DECLARE @TextResponseMsg varchar(8000)
+DECLARE @ResponseMsg xml
+DECLARE @OrderID int;
+
+-- Take the message from the queue, retrieving its values into the local variables
+RECEIVE TOP(1) @OrderMsg = message_body,
+@Conv_Handler = conversation_handle,
+@Conv_Group = conversation_group_id
+FROM dbo.BookDistributionQueue;
+
+-- Insert the local variable values into the new table
+INSERT dbo.BookOrderReceived
+(conversation_handle, conversation_group_id, message_body)
+VALUES
+(@Conv_Handler,@Conv_Group, @OrderMsg )
+
+-- Use XQuery against the received message to extract
+-- the order ID, for use in the response message
+SELECT @OrderID = @OrderMsg.value('(/order/@id)[1]', 'int' )
+SELECT @TextResponseMsg =
+'<orderreceived id= "' +
+CAST(@OrderID as varchar(10)) +
+'"/>';
+SELECT @ResponseMsg = CAST(@TextResponseMsg as xml);
+
+-- Send the response message back to the initiator, using
+-- the existing conversation handle
+SEND ON CONVERSATION @Conv_Handler
+MESSAGE TYPE [//SackConsulting/BookOrderReceived]
+(@ResponseMsg );
+
+-- Ending a Conversation
+
+USE BookStore
+GO
+-- Create an order confirmation table
+CREATE TABLE dbo.BookOrderConfirmation
+(BookOrderConfirmationID int IDENTITY (1,1) NOT NULL,
+conversation_handle uniqueidentifier NOT NULL,
+DateReceived datetime NOT NULL DEFAULT GETDATE(),
+message_body xml NOT NULL)
+
+DECLARE @Conv_Handler uniqueidentifier
+DECLARE @Conv_Group uniqueidentifier
+DECLARE @OrderMsg xml
+DECLARE @TextResponseMsg varchar(8000);
+
+RECEIVE TOP(1) @Conv_Handler = conversation_handle,
+@OrderMsg = message_body
+FROM dbo.BookStoreQueue
+
+INSERT dbo.BookOrderConfirmation
+(conversation_handle, message_body)
+VALUES (@Conv_Handler,@OrderMsg );
+
+END CONVERSATION @Conv_Handler;
+GO
+
+USE BookDistribution
+GO
+DECLARE @Conv_Handler uniqueidentifier
+DECLARE @Conv_Group uniqueidentifier
+DECLARE @OrderMsg xml
+DECLARE @message_type_name nvarchar(256);
+
+RECEIVE TOP(1) @Conv_Handler = conversation_handle,
+@OrderMsg = message_body,
+@message_type_name = message_type_name
+FROM dbo.BookDistributionQueue
+
+-- Both sides (initiator and target) must end the conversation
+IF
+@message_type_name = 'http://schemas.microsoft.com/SQL/ServiceBroker/EndDialog'
+BEGIN
+END CONVERSATION @Conv_Handler;
+END
+
+SELECT state_desc, conversation_handle
+FROM sys.conversation_endpoints
+
+-- Prioritizing Service Broker Conversations
+
+ALTER DATABASE BookStore
+SET HONOR_BROKER_PRIORITY ON
+
+ALTER DATABASE BOOKDistribution
+SET HONOR_BROKER_PRIORITY ON
+
+SELECT name, is_honor_broker_priority_on
+FROM sys.databases
+WHERE name IN ('BookStore', 'BookDistribution')
+
+USE BookStore
+GO
+CREATE BROKER PRIORITY Conv_Priority_BookOrderContract_BookOrderService
+FOR CONVERSATION
+SET (CONTRACT_NAME = [//SackConsulting/BookOrderContract],
+LOCAL_SERVICE_NAME = [//SackConsulting/BookOrderService],
+REMOTE_SERVICE_NAME = ANY,
+PRIORITY_LEVEL = 10)
+
+SELECT name, priority, service_contract_id,
+local_service_id,remote_service_name
+FROM sys.conversation_priorities cp
+
+USE BookDistribution
+GO
+CREATE BROKER PRIORITY Conv_Priority_BookOrderContract_BookDistributionService
+FOR CONVERSATION
+SET (CONTRACT_NAME = [//SackConsulting/BookOrderContract],
+LOCAL_SERVICE_NAME = [//SackConsulting/BookDistributionService],
+REMOTE_SERVICE_NAME = ANY,
+PRIORITY_LEVEL = 10)
+
+USE BookStore
+GO
+ALTER BROKER PRIORITY Conv_Priority_BookOrderContract_BookOrderService
+FOR CONVERSATION
+SET (REMOTE_SERVICE_NAME = '//SackConsulting/BookDistributionService')
+
+ALTER BROKER PRIORITY Conv_Priority_BookOrderContract_BookOrderService
+FOR CONVERSATION
+SET (PRIORITY_LEVEL = 9)
+
+DROP BROKER PRIORITY Conv_Priority_BookOrderContract_BookOrderService
+
+-- Creating the Bookstore Stored Procedure
+
+USE BookDistribution
+GO
+CREATE PROCEDURE dbo.usp_SB_ReceiveOrders
+AS
+DECLARE @Conv_Handler uniqueidentifier
+DECLARE @Conv_Group uniqueidentifier
+DECLARE @OrderMsg xml
+DECLARE @TextResponseMsg varchar(8000)
+DECLARE @ResponseMsg xml
+DECLARE @Message_Type_Name nvarchar(256);
+DECLARE @OrderID int;
+
+-- XACT_ABORT automatically rolls back the transaction when a runtime error occurs
+SET XACT_ABORT ON
+
+BEGIN TRAN;
+
+RECEIVE TOP(1) @OrderMsg = message_body,
+@Conv_Handler = conversation_handle,
+@Conv_Group = conversation_group_id,
+@Message_Type_Name = message_type_name
+FROM dbo.BookDistributionQueue;
+
+IF @Message_Type_Name = '//SackConsulting/SendBookOrder'
+BEGIN
+INSERT dbo.BookOrderReceived
+(conversation_handle, conversation_group_id, message_body)
+VALUES
+(@Conv_Handler,@Conv_Group, @OrderMsg )
+SELECT @OrderID = @OrderMsg.value('(/order/@id)[1]', 'int' )
+SELECT @TextResponseMsg =
+'<orderreceived id= "' +
+CAST(@OrderID as varchar(10)) +
+'"/>';
+SELECT @ResponseMsg = CAST(@TextResponseMsg as xml);
+SEND ON CONVERSATION @Conv_Handler
+MESSAGE TYPE [//SackConsulting/BookOrderReceived]
+(@ResponseMsg );
+END
+
+IF @Message_Type_Name = 'http://schemas.microsoft.com/SQL/ServiceBroker/EndDialog'
+BEGIN
+END CONVERSATION @Conv_Handler;
+END
+COMMIT TRAN
+GO
+
+ALTER QUEUE dbo.BookDistributionQueue
+WITH ACTIVATION (STATUS = ON,
+PROCEDURE_NAME = dbo.usp_SB_ReceiveOrders,
+MAX_QUEUE_READERS = 2,
+EXECUTE AS SELF)
+
+Use BookStore
+GO
+
+DECLARE @Conv_Handler uniqueidentifier
+DECLARE @OrderMsg xml;
+
+BEGIN DIALOG CONVERSATION @conv_handler
+FROM SERVICE [//SackConsulting/BookOrderService]
+TO SERVICE '//SackConsulting/BookDistributionService'
+ON CONTRACT [//SackConsulting/BookOrderContract];
+
+SET @OrderMsg =
+'<order id="3490" customer="29" orderdate="7/22/2008">
+<LineItem ItemNumber="1" ISBN="1-59059-592-0" Quantity="2" />
+</order>';
+
+SEND ON CONVERSATION @Conv_Handler
+MESSAGE TYPE [//SackConsulting/SendBookOrder]
+(@OrderMsg);
+
+SELECT conversation_handle, CAST(message_body as xml) message
+FROM dbo.BookStoreQueue
+
+-- Remote-Server Service Broker Implementations
+
+USE master
+GO
+-- Enable Service Broker for the database
+ALTER DATABASE BookStore SET ENABLE_BROKER
+GO
+ALTER DATABASE BookStore SET TRUSTWORTHY ON
+GO
+
+USE BookStore
+GO
+-- Create the messages
+CREATE MESSAGE TYPE [//SackConsulting/SendBookOrder]
+VALIDATION = WELL_FORMED_XML
+GO
+CREATE MESSAGE TYPE [//SackConsulting/BookOrderReceived]
+VALIDATION = WELL_FORMED_XML
+GO
+
+-- Create the contract
+CREATE CONTRACT
+[//SackConsulting/BookOrderContract]
+( [//SackConsulting/SendBookOrder]
+SENT BY INITIATOR,
+[//SackConsulting/BookOrderReceived]
+SENT BY TARGET
+)
+GO
+
+-- Create the queue
+CREATE QUEUE BookStoreQueue
+WITH STATUS=ON
+GO
+
+-- Create the service
+CREATE SERVICE [//SackConsulting/BookOrderService]
+ON QUEUE dbo.BookStoreQueue
+([//SackConsulting/BookOrderContract])
+GO
+
+USE master
+GO
+IF NOT EXISTS (SELECT name
+FROM sys.databases
+WHERE name = 'BookDistribution')
+CREATE DATABASE BookDistribution
+GO
+
+-- Enable Service Broker for the database
+ALTER DATABASE BookDistribution SET ENABLE_BROKER
+GO
+ALTER DATABASE BookDistribution SET TRUSTWORTHY ON
+GO
+
+USE BookDistribution
+GO
+-- Create the messages
+CREATE MESSAGE TYPE [//SackConsulting/SendBookOrder]
+VALIDATION = WELL_FORMED_XML
+GO
+CREATE MESSAGE TYPE [//SackConsulting/BookOrderReceived]
+VALIDATION = WELL_FORMED_XML
+GO
+
+-- Create the contract
+CREATE CONTRACT
+[//SackConsulting/BookOrderContract]
+( [//SackConsulting/SendBookOrder]
+SENT BY INITIATOR,
+[//SackConsulting/BookOrderReceived]
+SENT BY TARGET
+)
+GO
+
+-- Create the queue
+CREATE QUEUE BookDistributionQueue
+WITH STATUS=ON
+GO
+
+-- Create the service
+CREATE SERVICE [//SackConsulting/BookDistributionService]
+ON QUEUE dbo.BookDistributionQueue
+([//SackConsulting/BookOrderContract])
+GO
+
+-- Enabling Transport Security
+
+-- Executed on JOEPROD
+USE master
+GO
+CREATE MASTER KEY ENCRYPTION BY PASSWORD = '1294934A!'
+-- Executed on JOEPROD\NODE2
+USE master
+GO
+
+CREATE MASTER KEY ENCRYPTION BY PASSWORD = '1294934B!'
+
+-- Executed on JOEPROD
+CREATE CERTIFICATE JOEPRODMasterCert
+WITH SUBJECT = 'JOEPROD Transport Security SB',
+EXPIRY_DATE = '10/1/2010'
+GO
+
+-- Executed on JOEPROD\NODE2
+CREATE CERTIFICATE Node2MasterCert
+WITH SUBJECT = 'Node 2 Transport Security SB',
+EXPIRY_DATE = '10/1/2010'
+GO
+-- Executed on JOEPROD
+BACKUP CERTIFICATE JOEPRODMasterCert
+TO FILE = 'C:\Apress\JOEPRODMasterCert.cer'
+GO
+
+-- Executed on JOEPROD\NODE2
+BACKUP CERTIFICATE Node2MasterCert
+TO FILE = 'C:\Apress\Node2MasterCert.cer'
+GO
+
+-- Executed on JOEPROD
+CREATE ENDPOINT SB_JOEPROD_Endpoint
+STATE = STARTED
+AS TCP
+(LISTENER_PORT = 4020)
+FOR SERVICE_BROKER
+(AUTHENTICATION = CERTIFICATE JOEPRODMasterCert,
+ENCRYPTION = REQUIRED)
+GO
+
+-- Executed on JOEPROD\NODE2
+CREATE ENDPOINT SB_NODE2_Endpoint
+STATE = STARTED
+AS TCP
+(LISTENER_PORT = 4021)
+FOR SERVICE_BROKER
+(AUTHENTICATION = CERTIFICATE Node2MasterCert,
+ENCRYPTION = REQUIRED)
+GO
+
+-- Executed on JOEPROD
+CREATE LOGIN SBLogin
+WITH PASSWORD = 'Used4TransSec'
+GO
+CREATE USER SBUser
+FOR LOGIN SBLogin
+GO
+
+-- Executed on JOEPROD\NODE2
+CREATE LOGIN SBLogin
+WITH PASSWORD = 'Used4TransSec'
+GO
+CREATE USER SBUser
+FOR LOGIN SBLogin
+GO
+
+-- Executed on JOEPROD
+GRANT CONNECT ON Endpoint::SB_JOEPROD_Endpoint TO SBLogin
+GO
+
+-- Executed on JOEPROD\NODE2
+GRANT CONNECT ON Endpoint::SB_NODE2_Endpoint TO SBLogin
+GO
+
+-- Executed on JOEPROD
+CREATE CERTIFICATE Node2MasterCert
+AUTHORIZATION SBUser
+FROM FILE = 'C:\Apress\Node2MasterCert.cer'
+GO
+
+-- Executed on JOEPROD\NODE2
+CREATE CERTIFICATE JOEPRODMasterCert
+AUTHORIZATION SBUser
+FROM FILE = 'C:\Apress\JOEPRODMasterCert.cer'
+GO
+
+-- Enabling Dialog Security
+
+-- Executed on JOEPROD
+USE BookStore
+GO
+CREATE MASTER KEY ENCRYPTION BY PASSWORD = '1294934A!'
+GO
+
+CREATE CERTIFICATE BookStoreCert
+WITH SUBJECT = 'BookStore SB cert',
+EXPIRY_DATE = '10/1/2010'
+GO
+
+-- Executed on NODE2
+USE BookDistribution
+GO
+
+CREATE MASTER KEY ENCRYPTION BY PASSWORD = '1294934B!'
+GO
+CREATE CERTIFICATE BookDistributionCert
+WITH SUBJECT = 'BookDistributionCert SB cert',
+EXPIRY_DATE = '10/1/2010'
+GO
+
+-- Executed on JOEPROD
+USE BookStore
+GO
+BACKUP CERTIFICATE BookStoreCert
+TO FILE = 'C:\Apress\BookStoreCert.cer'
+GO
+
+-- Executed on NODE2
+USE BookDistribution
+GO
+BACKUP CERTIFICATE BookDistributionCert
+TO FILE = 'C:\Apress\BookDistributionCert.cer'
+GO
+
+-- Executed on JOEPROD
+USE BookStore
+GO
+CREATE USER BookDistributionUser
+WITHOUT LOGIN
+GO
+
+-- Executed on NODE2
+USE BookDistribution
+GO
+CREATE USER BookStoreUser
+WITHOUT LOGIN
+GO
+
+-- Executed on JOEPROD
+USE BookStore
+GO
+CREATE CERTIFICATE BookDistributionCert
+AUTHORIZATION BookDistributionUser
+FROM FILE = 'C:\Apress\BookDistributionCert.cer'
+GO
+
+-- Executed on NODE2
+USE BookDistribution
+GO
+CREATE CERTIFICATE BookStoreCert
+AUTHORIZATION BookStoreUser
+FROM FILE = 'C:\Apress\BookStoreCert.cer'
+GO
+
+-- Executed on JOEPROD
+USE BookStore
+GO
+GRANT SEND ON
+SERVICE::[//SackConsulting/BookOrderService] TO BookDistributionUser
+GO
+
+-- Executed on NODE2
+USE BookDistribution
+GO
+GRANT SEND ON
+SERVICE::[//SackConsulting/BookDistributionService]
+TO BookStoreUser
+
+-- Creating Routes and Remote Service Bindings
+-- Executed on JOEPROD
+USE BookStore
+GO
+CREATE ROUTE Route_BookDistribution
+WITH SERVICE_NAME = '//SackConsulting/BookDistributionService',
+ADDRESS = 'TCP://192.168.0.105:4021'
+GO
+
+-- Executed on NODE2
+USE BookDistribution
+GO
+CHAPTER 20 n SERVICE BROKER 609
+CREATE ROUTE Route_BookStore
+WITH SERVICE_NAME = '//SackConsulting/BookOrderService',
+ADDRESS = 'TCP://192.168.0.105:4020'
+GO
+
+USE BookStore
+GO
+CREATE REMOTE SERVICE BINDING BookDistributionBinding
+TO SERVICE '//SackConsulting/BookDistributionService'
+WITH USER = BookDistributionUser
+GO
+
+USE BookDistribution
+GO
+CREATE REMOTE SERVICE BINDING BookStoreBinding
+TO SERVICE '//SackConsulting/BookOrderService'
+WITH USER = BookStoreUser
+GO
+
+Use BookStore
+GO
+DECLARE @Conv_Handler uniqueidentifier
+DECLARE @OrderMsg xml;
+
+BEGIN DIALOG CONVERSATION @Conv_Handler
+FROM SERVICE [//SackConsulting/BookOrderService]
+TO SERVICE '//SackConsulting/BookDistributionService'
+ON CONTRACT [//SackConsulting/BookOrderContract];
+
+SET @OrderMsg =
+'<order id="3439" customer="22" orderdate="9/25/2008">
+<LineItem ItemNumber="22" ISBN="1-59059-592-0" Quantity="10" />
+</order>';
+
+SEND ON CONVERSATION @Conv_Handler
+MESSAGE TYPE [//SackConsulting/SendBookOrder]
+(@OrderMsg);
+
+USE BookDistribution
+GO
+SELECT message_type_name, CAST(message_body as xml) message,
+queuing_order, conversation_handle, conversation_group_id
+FROM dbo.BookDistributionQueue
+
+-- Capturing Login Commands
+
+IF NOT EXISTS (SELECT name
+FROM sys.databases
+WHERE name = 'EventTracking')
+CREATE DATABASE EventTracking
+GO
+USE EventTracking
+GO
+CREATE QUEUE SQLEventQueue
+WITH STATUS=ON;
+GO
+
+CREATE SERVICE [//JOEPROD/TrackLoginModificationService]
+ON QUEUE SQLEventQueue
+([http://schemas.microsoft.com/SQL/Notifications/PostEventNotification]);
+GO
+
+select service_broker_guid
+from sys.databases
+WHERE name = 'EventTracking'
+
+CREATE EVENT NOTIFICATION EN_LoginEvents
+ON SERVER
+FOR CREATE_LOGIN, ALTER_LOGIN, DROP_LOGIN
+TO SERVICE '//JOEPROD/TrackLoginModificationService',
+'C72069CD-ACBA-4EA8-80BB-5CC6FF3A40AA';
+
+CREATE LOGIN TrishelleN WITH PASSWORD = 'AR!3i2ou4'
+GO
+
+SELECT CAST(message_body as xml) EventInfo
+FROM dbo.SQLEventQueue
+
+
+
+
+
+
+
+
+
